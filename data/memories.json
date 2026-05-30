@@ -1,0 +1,32 @@
+[
+    {
+        "text": "User appreciated honesty",
+        "emotion": "positive_social",
+        "intensity": 0.8
+    },
+    {
+        "text": "User mocked vulnerability",
+        "emotion": "rejection",
+        "intensity": 0.9
+    },
+    {
+        "text": "User showed warmth and support",
+        "emotion": "positive_social",
+        "intensity": 0.7
+    },
+    {
+        "text": "User appreciated honesty",
+        "emotion": "positive_social",
+        "intensity": 0.8
+    },
+    {
+        "text": "User mocked vulnerability",
+        "emotion": "rejection",
+        "intensity": 0.9
+    },
+    {
+        "text": "User showed warmth and support",
+        "emotion": "positive_social",
+        "intensity": 0.7
+    }
+]

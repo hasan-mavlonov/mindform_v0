@@ -1,0 +1,147 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="DuplicatedCode" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <Languages>
+        <language minSize="48" name="Python" />
+      </Languages>
+    </inspection_tool>
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="accelerate" />
+          <option value="alembic" />
+          <option value="annotated-types" />
+          <option value="anyio" />
+          <option value="attrs" />
+          <option value="backoff" />
+          <option value="bcrypt" />
+          <option value="build" />
+          <option value="cachetools" />
+          <option value="certifi" />
+          <option value="charset-normalizer" />
+          <option value="chromadb" />
+          <option value="click" />
+          <option value="colorama" />
+          <option value="coloredlogs" />
+          <option value="decorator" />
+          <option value="diffusers" />
+          <option value="distro" />
+          <option value="dnspython" />
+          <option value="durationpy" />
+          <option value="email_validator" />
+          <option value="fastapi" />
+          <option value="fastapi-cli" />
+          <option value="filelock" />
+          <option value="flatbuffers" />
+          <option value="fsspec" />
+          <option value="google-auth" />
+          <option value="googleapis-common-protos" />
+          <option value="greenlet" />
+          <option value="grpcio" />
+          <option value="h11" />
+          <option value="hf-xet" />
+          <option value="httpcore" />
+          <option value="httptools" />
+          <option value="httpx" />
+          <option value="huggingface-hub" />
+          <option value="humanfriendly" />
+          <option value="idna" />
+          <option value="imageio" />
+          <option value="imageio-ffmpeg" />
+          <option value="importlib_metadata" />
+          <option value="importlib_resources" />
+          <option value="instagrapi" />
+          <option value="Jinja2" />
+          <option value="jiter" />
+          <option value="joblib" />
+          <option value="jsonschema" />
+          <option value="jsonschema-specifications" />
+          <option value="kubernetes" />
+          <option value="Mako" />
+          <option value="markdown-it-py" />
+          <option value="MarkupSafe" />
+          <option value="mdurl" />
+          <option value="mmh3" />
+          <option value="moviepy" />
+          <option value="mpmath" />
+          <option value="networkx" />
+          <option value="numpy" />
+          <option value="oauthlib" />
+          <option value="onnxruntime" />
+          <option value="openai" />
+          <option value="opentelemetry-api" />
+          <option value="opentelemetry-exporter-otlp-proto-common" />
+          <option value="opentelemetry-exporter-otlp-proto-grpc" />
+          <option value="opentelemetry-proto" />
+          <option value="opentelemetry-sdk" />
+          <option value="opentelemetry-semantic-conventions" />
+          <option value="orjson" />
+          <option value="overrides" />
+          <option value="packaging" />
+          <option value="passlib" />
+          <option value="pillow" />
+          <option value="posthog" />
+          <option value="proglog" />
+          <option value="protobuf" />
+          <option value="psutil" />
+          <option value="psycopg2" />
+          <option value="psycopg2-binary" />
+          <option value="pyasn1" />
+          <option value="pyasn1_modules" />
+          <option value="pybase64" />
+          <option value="pycryptodomex" />
+          <option value="pydantic" />
+          <option value="pydantic_core" />
+          <option value="Pygments" />
+          <option value="PyJWT" />
+          <option value="PyPika" />
+          <option value="pyproject_hooks" />
+          <option value="pyreadline3" />
+          <option value="PySocks" />
+          <option value="python-dateutil" />
+          <option value="python-decouple" />
+          <option value="python-dotenv" />
+          <option value="python-multipart" />
+          <option value="PyYAML" />
+          <option value="referencing" />
+          <option value="regex" />
+          <option value="requests" />
+          <option value="requests-oauthlib" />
+          <option value="rich" />
+          <option value="rpds-py" />
+          <option value="rsa" />
+          <option value="safetensors" />
+          <option value="scikit-learn" />
+          <option value="scipy" />
+          <option value="sentence-transformers" />
+          <option value="setuptools" />
+          <option value="shellingham" />
+          <option value="six" />
+          <option value="sniffio" />
+          <option value="SQLAlchemy" />
+          <option value="sqlmodel" />
+          <option value="starlette" />
+          <option value="sympy" />
+          <option value="tenacity" />
+          <option value="threadpoolctl" />
+          <option value="tokenizers" />
+          <option value="torch" />
+          <option value="torchaudio" />
+          <option value="torchvision" />
+          <option value="tqdm" />
+          <option value="transformers" />
+          <option value="typer" />
+          <option value="typing-inspection" />
+          <option value="typing_extensions" />
+          <option value="urllib3" />
+          <option value="uvicorn" />
+          <option value="watchfiles" />
+          <option value="websocket-client" />
+          <option value="websockets" />
+          <option value="zipp" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
