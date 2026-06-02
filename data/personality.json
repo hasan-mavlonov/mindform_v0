@@ -1,7 +1,10 @@
 {
-    "openness": 0.0,
-    "conscientiousness": 0.0,
-    "extraversion": 0.0,
-    "agreeableness": 0.0,
-    "neuroticism": 0.0
+    "traits": {
+        "O": 0.0,
+        "C": 0.0,
+        "E": 0.0,
+        "A": 0.0,
+        "N": 0.0
+    },
+    "experience_count": 0
 }
