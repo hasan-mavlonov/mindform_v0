@@ -1,160 +1,149 @@
+"""Production training script for the MindForm trait prediction model.
+
+Trains a model that maps text -> OCEAN (Big Five) trait scores using MiniLM
+sentence embeddings. The data is split into train/validation sets, both losses
+are reported each epoch, and the model is only saved when validation loss
+improves.
+
+Usage:
+    python train_trait_model.py
+    python train_trait_model.py --sample-size 100000 --epochs 20
+"""
+
+import argparse
+
 import torch
 import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset, random_split
 
 from datasets import load_dataset
+
 from encoder import encode_text
+from trait_model import TraitPredictor, MODEL_PATH, DEVICE
 
-MODEL_PATH = "trait_model.pth"
+DATASET_NAME = "jingjietan/pandora-big5"
 
-DEVICE = (
-    "cuda"
-    if torch.cuda.is_available()
-    else "cpu"
-)
-
-SAMPLE_SIZE = 50_000
-BATCH_SIZE = 256
-EPOCHS = 10
+# Pandora label columns in OCEAN order, scaled from 0-100 to 0-1.
+LABEL_COLUMNS = ["O", "C", "E", "A", "N"]
 
 
-class TraitPredictor(nn.Module):
+def build_dataset(sample_size):
+    """Encode Pandora samples into a TensorDataset of (embedding, target)."""
+    print(f"Loading dataset '{DATASET_NAME}'...")
+    ds = load_dataset(DATASET_NAME, split="train")
 
-    def __init__(self):
-        super().__init__()
+    if sample_size:
+        ds = ds.select(range(min(sample_size, len(ds))))
 
-        self.network = nn.Sequential(
-            nn.Linear(384, 128),
-            nn.ReLU(),
+    print(f"Encoding {len(ds)} samples with MiniLM...")
+    embeddings = encode_text(ds["text"])
 
-            nn.Linear(128, 64),
-            nn.ReLU(),
+    # Fetch each label column once, then scale 0-100 -> 0-1 per row.
+    columns = [ds[col] for col in LABEL_COLUMNS]
+    targets = [[value / 100.0 for value in row] for row in zip(*columns)]
 
-            nn.Linear(64, 5),
-            nn.Sigmoid()
-        )
+    X = torch.tensor(embeddings, dtype=torch.float32)
+    y = torch.tensor(targets, dtype=torch.float32)
 
-    def forward(self, x):
-        return self.network(x)
+    return TensorDataset(X, y)
 
 
-print("Loading dataset...")
+def split_dataset(dataset, val_fraction, seed=42):
+    """Split a dataset into (train, validation) subsets."""
+    val_size = int(len(dataset) * val_fraction)
+    train_size = len(dataset) - val_size
 
-ds = load_dataset(
-    "jingjietan/pandora-big5"
-)
+    generator = torch.Generator().manual_seed(seed)
+    return random_split(dataset, [train_size, val_size], generator=generator)
 
-train = ds["train"].select(
-    range(SAMPLE_SIZE)
-)
 
-print("Encoding texts...")
+def run_epoch(model, loader, criterion, optimizer=None):
+    """Run one epoch. Trains when an optimizer is given, otherwise evaluates."""
+    is_train = optimizer is not None
+    model.train(is_train)
 
-embeddings = []
-targets = []
+    total_loss = 0.0
 
-for i, sample in enumerate(train):
+    with torch.set_grad_enabled(is_train):
+        for batch_x, batch_y in loader:
+            batch_x = batch_x.to(DEVICE)
+            batch_y = batch_y.to(DEVICE)
 
-    embedding = encode_text(
-        sample["text"]
-    )
+            predictions = model(batch_x)
+            loss = criterion(predictions, batch_y)
 
-    target = [
-        sample["O"] / 100.0,
-        sample["C"] / 100.0,
-        sample["E"] / 100.0,
-        sample["A"] / 100.0,
-        sample["N"] / 100.0,
-    ]
+            if is_train:
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-    embeddings.append(embedding)
-    targets.append(target)
+            total_loss += loss.item() * batch_x.size(0)
 
-    if i % 1000 == 0:
+    return total_loss / len(loader.dataset)
+
+
+def train(sample_size, epochs, batch_size, lr, val_fraction, model_path):
+    dataset = build_dataset(sample_size)
+    train_set, val_set = split_dataset(dataset, val_fraction)
+
+    print(f"Train samples: {len(train_set)} | Validation samples: {len(val_set)}")
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=batch_size)
+
+    model = TraitPredictor().to(DEVICE)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    print(f"Training on {DEVICE} for {epochs} epochs...\n")
+
+    best_val_loss = float("inf")
+
+    for epoch in range(1, epochs + 1):
+        train_loss = run_epoch(model, train_loader, criterion, optimizer)
+        val_loss = run_epoch(model, val_loader, criterion)
+
+        improved = val_loss < best_val_loss
+        if improved:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), model_path)
+
         print(
-            f"{i}/{SAMPLE_SIZE}"
+            f"Epoch {epoch:2d}/{epochs} | "
+            f"train loss {train_loss:.6f} | "
+            f"val loss {val_loss:.6f}"
+            f"{'  <- saved' if improved else ''}"
         )
 
-X = torch.tensor(
-    embeddings,
-    dtype=torch.float32
-)
+    print(f"\nBest validation loss: {best_val_loss:.6f}")
+    print(f"Best model saved to: {model_path}")
 
-y = torch.tensor(
-    targets,
-    dtype=torch.float32
-)
 
-dataset = TensorDataset(
-    X,
-    y
-)
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Train the MindForm trait prediction model (text -> OCEAN)."
+    )
+    parser.add_argument("--sample-size", type=int, default=50_000,
+                        help="Number of samples to use (0 = full dataset).")
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--val-fraction", type=float, default=0.2)
+    parser.add_argument("--model-path", type=str, default=MODEL_PATH)
+    return parser.parse_args()
 
-loader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True
-)
 
-model = TraitPredictor().to(
-    DEVICE
-)
-
-criterion = nn.MSELoss()
-
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=0.001
-)
-
-print("Training...")
-
-for epoch in range(EPOCHS):
-
-    total_loss = 0
-
-    for batch_x, batch_y in loader:
-
-        batch_x = batch_x.to(
-            DEVICE
-        )
-
-        batch_y = batch_y.to(
-            DEVICE
-        )
-
-        predictions = model(
-            batch_x
-        )
-
-        loss = criterion(
-            predictions,
-            batch_y
-        )
-
-        optimizer.zero_grad()
-
-        loss.backward()
-
-        optimizer.step()
-
-        total_loss += loss.item()
-
-    avg_loss = (
-        total_loss /
-        len(loader)
+def main():
+    args = parse_args()
+    train(
+        sample_size=args.sample_size,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        val_fraction=args.val_fraction,
+        model_path=args.model_path,
     )
 
-    print(
-        f"Epoch {epoch + 1}: "
-        f"{avg_loss:.6f}"
-    )
 
-torch.save(
-    model.state_dict(),
-    MODEL_PATH
-)
-
-print(
-    f"Saved model to {MODEL_PATH}"
-)
+if __name__ == "__main__":
+    main()

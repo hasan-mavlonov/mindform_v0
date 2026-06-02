@@ -1,35 +1,35 @@
+"""Gradually update personality state toward predicted traits.
+
+The personality is never overwritten. Instead each trait drifts toward its
+predicted value by a fraction of the gap, with diminishing returns near the
+extremes so that traits become progressively harder to push as they approach
++/-1.
+"""
+
+LEARNING_RATE = 0.1
+
+
 def clamp(value, minimum=-1.0, maximum=1.0):
     return max(minimum, min(maximum, value))
 
 
-def apply_trait_changes(personality, trait_changes):
-    for trait, delta in trait_changes.items():
-        current = personality[trait]
+def update_personality(personality, prediction, learning_rate=LEARNING_RATE):
+    """Move each trait toward its predicted value.
 
-        effective_delta = (
-                delta *
-                (1 - max(0, current * delta))
+        effective_change = (prediction - current) * learning_rate * (1 - abs(current))
+        new_value        = clamp(current + effective_change, -1, 1)
+
+    Returns a new personality dict; the input is not mutated.
+    """
+    updated = dict(personality)
+
+    for trait, predicted in prediction.items():
+        current = updated.get(trait, 0.0)
+
+        effective_change = (
+            (predicted - current) * learning_rate * (1 - abs(current))
         )
 
-        personality[trait] += effective_delta
+        updated[trait] = clamp(current + effective_change)
 
-        personality[trait] = clamp(
-            personality[trait]
-        )
-
-    return personality
-
-
-import json
-
-PERSONALITY_FILE = "data/personality.json"
-
-
-def load_personality():
-    with open(PERSONALITY_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_personality(personality):
-    with open(PERSONALITY_FILE, "w") as f:
-        json.dump(personality, f, indent=4)
+    return updated
