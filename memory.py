@@ -1,43 +1,56 @@
-"""Persistent storage of interactions and the traits inferred from them.
-
-Each memory records the raw text of an interaction alongside the trait scores
-predicted for it.
-"""
+"""Persistent memory of experiences: text, embedding, appraisal, and push."""
 
 import json
 import os
+
+import numpy as np
+
+from config import RECURRENCE_THRESHOLD
+from personality import read_traits
 
 MEMORY_FILE = "data/memories.json"
 
 
 def load_memories():
-    """Load all stored memories, creating an empty store if none exists."""
     if not os.path.exists(MEMORY_FILE):
         save_memories([])
         return []
-
     with open(MEMORY_FILE, "r") as f:
         return json.load(f)
 
 
 def save_memories(memories):
-    """Persist the full list of memories to disk."""
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
     with open(MEMORY_FILE, "w") as f:
         json.dump(memories, f, indent=4)
 
 
-def create_memory(text, traits):
-    """Append a new memory and return it.
-
-    A memory has the shape::
-
-        {"text": "...", "traits": {"openness": ..., ...}}
-    """
-    memory = {"text": text, "traits": traits}
-
+def create_memory(text, embedding, appraisal, push, personality_after):
+    """Append a new memory and return it."""
+    emb = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+    memory = {
+        "text": text,
+        "embedding": emb,
+        "appraisal": appraisal,
+        "push": push,
+        "traits_after": read_traits(personality_after),
+    }
     memories = load_memories()
     memories.append(memory)
     save_memories(memories)
-
     return memory
+
+
+def _cosine(a, b):
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    na, nb = np.linalg.norm(a), np.linalg.norm(b)
+    return float(a @ b / (na * nb)) if na and nb else 0.0
+
+
+def recurrence(embedding):
+    """How many past memories resemble this one (for display / insight)."""
+    return sum(
+        1 for m in load_memories()
+        if m.get("embedding")
+        and _cosine(embedding, m["embedding"]) >= RECURRENCE_THRESHOLD
+    )

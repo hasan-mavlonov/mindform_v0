@@ -1,48 +1,46 @@
-"""End-to-end demonstration of the MindForm interaction loop.
+"""End-to-end MindForm interaction loop.
 
-    text -> embedding -> trait prediction -> personality update -> memory storage
+    text -> MiniLM embedding
+         -> appraisal vector   (appraisal.py: heuristic now, learned head later)
+         -> signed push        (impact.py: appraisal -> per-trait push)
+         -> diminishing-returns update of the five traits (updater.py)
+         -> memory             (memory.py)
+
+The Pandora text->OCEAN model is used only as a read-only readout (readout.py).
 
 Run with: python simulation.py
 """
 
-from personality import load_personality, save_personality
-from trait_model import predict
+from encoder import encode_text
+from personality import load_personality, save_personality, read_traits
+from appraisal import appraise
+from impact import impact
 from updater import update_personality
-from memory import create_memory
+from memory import create_memory, recurrence
 from response import generate_response
 
 
 def run_interaction(text):
-    # 1. Load the current personality.
     personality = load_personality()
 
-    # 2. Predict traits from the text.
-    prediction = predict(text)
+    embedding = encode_text(text)
+    appraisal = appraise(text)
+    seen = recurrence(embedding)
 
-    # 3. Store the interaction in memory.
-    create_memory(text=text, traits=prediction)
+    push = impact(appraisal)
+    personality = update_personality(personality, push)
 
-    # 4. Update the personality gradually toward the prediction.
-    personality = update_personality(personality, prediction)
-
-    # 5. Persist the updated personality.
+    create_memory(text, embedding, appraisal, push, personality)
     save_personality(personality)
 
-    # 6. Print the results.
-    print(f"\nINPUT: {text}")
-
-    print("\nPREDICTED TRAITS:")
-    for trait, value in prediction.items():
-        print(f"  {trait:18s} {value:+.3f}")
-
-    print("\nUPDATED PERSONALITY:")
-    for trait, value in personality.items():
-        print(f"  {trait:18s} {value:+.3f}")
-
-    print(f"\nRESPONSE:\n  {generate_response(personality)}")
+    print(f"\nINPUT: {text}   (seen {seen} similar before)")
+    print("\nPUSH  ->  TRAIT:")
+    for dim, value in personality["traits"].items():
+        print(f"  {dim}  push {push[dim]:+.3f}  ->  trait {value:+.3f}")
+    print(f"\nRESPONSE:\n  {generate_response(read_traits(personality))}")
 
     return personality
 
 
 if __name__ == "__main__":
-    run_interaction("I love meeting new people.")
+    run_interaction("I went to a party and had fun.")

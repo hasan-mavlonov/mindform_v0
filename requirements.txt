@@ -1,6 +1,5 @@
-# Core dependencies for MindForm V1.
-# (numpy and other transitive deps are pulled in automatically.)
-
+# Core dependencies for MindForm.
 torch>=2.0
 sentence-transformers>=2.2.0
-datasets>=2.0.0
+datasets>=2.0.0          # Pandora readout training + affect-corpus loading (bootstrap)
+numpy>=1.21              # memory.recurrence (cosine similarity)
