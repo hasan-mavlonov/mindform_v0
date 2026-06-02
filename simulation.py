@@ -1,48 +1,48 @@
-from updater import (
-    load_personality,
-    save_personality
-)
+"""End-to-end demonstration of the MindForm interaction loop.
 
-from trait_model import (
-    predict_trait_changes
-)
+    text -> embedding -> trait prediction -> personality update -> memory storage
 
-from updater import (
-    apply_trait_changes
-)
+Run with: python simulation.py
+"""
 
-from memory import (
-    create_memory
-)
+from personality import load_personality, save_personality
+from trait_model import predict
+from updater import update_personality
+from memory import create_memory
+from response import generate_response
 
 
 def run_interaction(text):
+    # 1. Load the current personality.
     personality = load_personality()
 
-    trait_changes = predict_trait_changes(
-        text
-    )
+    # 2. Predict traits from the text.
+    prediction = predict(text)
 
-    create_memory(
-        text=text,
-        trait_changes=trait_changes
-    )
+    # 3. Store the interaction in memory.
+    create_memory(text=text, traits=prediction)
 
-    personality = apply_trait_changes(
-        personality,
-        trait_changes
-    )
+    # 4. Update the personality gradually toward the prediction.
+    personality = update_personality(personality, prediction)
 
+    # 5. Persist the updated personality.
     save_personality(personality)
 
-    print("\nTRAIT CHANGES:")
-    print(trait_changes)
+    # 6. Print the results.
+    print(f"\nINPUT: {text}")
 
-    print("\nPERSONALITY:")
-    print(personality)
+    print("\nPREDICTED TRAITS:")
+    for trait, value in prediction.items():
+        print(f"  {trait:18s} {value:+.3f}")
+
+    print("\nUPDATED PERSONALITY:")
+    for trait, value in personality.items():
+        print(f"  {trait:18s} {value:+.3f}")
+
+    print(f"\nRESPONSE:\n  {generate_response(personality)}")
+
+    return personality
+
 
 if __name__ == "__main__":
-    for _ in range(5):
-        run_interaction(
-            "I love meeting new people at parties"
-        )
+    run_interaction("I love meeting new people.")
