@@ -1,22 +1,35 @@
-from personality import clamp
+def clamp(value, minimum=-1.0, maximum=1.0):
+    return max(minimum, min(maximum, value))
 
 
-def apply_memory(memory, personality):
+def apply_trait_changes(personality, trait_changes):
+    for trait, delta in trait_changes.items():
+        current = personality[trait]
 
-    emotion = memory["emotion"]
-    intensity = memory["intensity"]
+        effective_delta = (
+                delta *
+                (1 - max(0, current * delta))
+        )
 
-    if emotion == "positive_social":
+        personality[trait] += effective_delta
 
-        personality["trust"] += 0.15 * intensity
-        personality["openness"] += 0.10 * intensity
-
-    elif emotion == "rejection":
-
-        personality["trust"] -= 0.20 * intensity
-        personality["openness"] -= 0.05 * intensity
-
-    personality["trust"] = clamp(personality["trust"])
-    personality["openness"] = clamp(personality["openness"])
+        personality[trait] = clamp(
+            personality[trait]
+        )
 
     return personality
+
+
+import json
+
+PERSONALITY_FILE = "data/personality.json"
+
+
+def load_personality():
+    with open(PERSONALITY_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_personality(personality):
+    with open(PERSONALITY_FILE, "w") as f:
+        json.dump(personality, f, indent=4)

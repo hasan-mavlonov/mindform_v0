@@ -1,32 +1,52 @@
 [
     {
-        "text": "User appreciated honesty",
-        "emotion": "positive_social",
-        "intensity": 0.8
+        "text": "I love meeting new people at parties",
+        "trait_changes": {
+            "openness": 0.0,
+            "conscientiousness": 0.0,
+            "extraversion": 0.1,
+            "agreeableness": 0.0,
+            "neuroticism": 0.0
+        }
     },
     {
-        "text": "User mocked vulnerability",
-        "emotion": "rejection",
-        "intensity": 0.9
+        "text": "I love meeting new people at parties",
+        "trait_changes": {
+            "openness": 0.0,
+            "conscientiousness": 0.0,
+            "extraversion": 0.1,
+            "agreeableness": 0.0,
+            "neuroticism": 0.0
+        }
     },
     {
-        "text": "User showed warmth and support",
-        "emotion": "positive_social",
-        "intensity": 0.7
+        "text": "I love meeting new people at parties",
+        "trait_changes": {
+            "openness": 0.0,
+            "conscientiousness": 0.0,
+            "extraversion": 0.1,
+            "agreeableness": 0.0,
+            "neuroticism": 0.0
+        }
     },
     {
-        "text": "User appreciated honesty",
-        "emotion": "positive_social",
-        "intensity": 0.8
+        "text": "I love meeting new people at parties",
+        "trait_changes": {
+            "openness": 0.0,
+            "conscientiousness": 0.0,
+            "extraversion": 0.1,
+            "agreeableness": 0.0,
+            "neuroticism": 0.0
+        }
     },
     {
-        "text": "User mocked vulnerability",
-        "emotion": "rejection",
-        "intensity": 0.9
-    },
-    {
-        "text": "User showed warmth and support",
-        "emotion": "positive_social",
-        "intensity": 0.7
+        "text": "I love meeting new people at parties",
+        "trait_changes": {
+            "openness": 0.0,
+            "conscientiousness": 0.0,
+            "extraversion": 0.1,
+            "agreeableness": 0.0,
+            "neuroticism": 0.0
+        }
     }
 ]

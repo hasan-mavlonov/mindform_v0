@@ -1,41 +1,48 @@
-from personality import (
+from updater import (
     load_personality,
     save_personality
 )
 
-from memory import create_memory
+from trait_model import (
+    predict_trait_changes
+)
 
-from updater import apply_memory
+from updater import (
+    apply_trait_changes
+)
 
-from response import generate_response
+from memory import (
+    create_memory
+)
 
 
-def run_interaction(text, emotion, intensity):
-
+def run_interaction(text):
     personality = load_personality()
 
-    memory = create_memory(
+    trait_changes = predict_trait_changes(
+        text
+    )
+
+    create_memory(
         text=text,
-        emotion=emotion,
-        intensity=intensity
+        trait_changes=trait_changes
     )
 
-    updated_personality = apply_memory(
-        memory,
-        personality
+    personality = apply_trait_changes(
+        personality,
+        trait_changes
     )
 
-    save_personality(updated_personality)
+    save_personality(personality)
 
-    response = generate_response(
-        updated_personality
-    )
+    print("\nTRAIT CHANGES:")
+    print(trait_changes)
 
-    print("\nMEMORY:")
-    print(memory)
+    print("\nPERSONALITY:")
+    print(personality)
 
-    print("\nUPDATED PERSONALITY:")
-    print(updated_personality)
-
-    print("\nRESPONSE:")
-    print(response)
+if __name__ == "__main__":
+    for _ in range(5):
+        run_interaction(
+            "I love meeting new people at parties"
+        )

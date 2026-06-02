@@ -18,12 +18,11 @@ def save_memories(memories):
         json.dump(memories, f, indent=4)
 
 
-def create_memory(text, emotion, intensity):
+def create_memory(text, trait_changes):
 
     memory = {
         "text": text,
-        "emotion": emotion,
-        "intensity": intensity
+        "trait_changes": trait_changes
     }
 
     memories = load_memories()
