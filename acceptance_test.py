@@ -17,7 +17,7 @@ Run: python3 acceptance_test.py
 """
 
 from personality import default_personality
-from appraisal import appraise
+from appraisal import appraise, blend_appraisal
 from impact import impact
 from updater import update_personality
 
@@ -73,12 +73,21 @@ form_mastery = trait(run(default_personality(), mastery, n=30), "N")
 # --- 6. maturation: sustained mastery raises C, lowers N ---
 p6 = run(default_personality(), mastery, n=40)
 
+# --- 7. memory feedback: recurrence damps mood (habituation) but boosts the slow
+#        trait (chronicity); retrieval blends a new appraisal toward memory ---
+fresh = update_personality(default_personality(), impact(party), recurrence=0)
+recurred = update_personality(default_personality(), impact(party), recurrence=4)
+neg = {k: -v for k, v in party.items()}
+blended = blend_appraisal(party, [neg])
+
 print(f"1) one party:      mood_E={s_E:+.3f}  trait_E={t_E:+.3f}")
 print(f"2) trait_E (1,5,10,20,40): {[round(traj[i],3) for i in (0,4,9,19,39)]}")
 print(f"3) spike->quiet:   mood_E={state(p3,'E'):+.3f}  trait_E residue={trait(p3,'E'):+.4f}")
 print(f"4) set-point:      peak_E={peak_E:+.3f} -> relaxed_E={relaxed_E:+.3f}")
 print(f"5) N immediate:    terror={imm_terror:+.3f} mastery={imm_mastery:+.3f} | formed: terror={form_terror:+.3f} mastery={form_mastery:+.3f}")
 print(f"6) maturation:     trait_C={trait(p6,'C'):+.3f}  trait_N={trait(p6,'N'):+.3f}")
+print(f"7) memory feedback: mood fresh={state(fresh,'E'):+.3f} recurred={state(recurred,'E'):+.3f} | "
+      f"trait fresh={trait(fresh,'E'):+.4f} recurred={trait(recurred,'E'):+.4f} | blend_valence={blended['valence']:+.2f}")
 
 checks = {
     "mood moves on first experience (state_E > 0.15)": s_E > 0.15,
@@ -96,6 +105,10 @@ checks = {
     "lasting trait forms with repetition: terror_N > mastery_N": form_terror > 0 > form_mastery,
     "maturation: sustained mastery raises C": trait(p6, "C") > 0.2,
     "maturation: sustained mastery lowers N": trait(p6, "N") < -0.2,
+    "recurrence damps mood (habituation)": abs(state(recurred, "E")) < abs(state(fresh, "E")),
+    "recurrence boosts consolidation (chronicity)": trait(recurred, "E") > trait(fresh, "E"),
+    "retrieval blends appraisal toward memory": blended["valence"] < party["valence"],
+    "blend with no memory is identity": blend_appraisal(party, []) == party,
 }
 
 print("\nRESULTS:")

@@ -13,10 +13,10 @@ from personality import (
     load_personality, save_personality, default_personality, read_traits, read_state
 )
 from encoder import encode_text
-from appraisal import appraise
+from appraisal import appraise, blend_appraisal
 from impact import impact
 from updater import update_personality
-from memory import create_memory, recurrence
+from memory import create_memory, recurrence, retrieve_similar
 
 
 def print_traits(personality):
@@ -56,11 +56,12 @@ def run():
 
         # --- CORE PIPELINE ---
         embedding = encode_text(text)[0]
-        appraisal = appraise(text)
+        neighbors = retrieve_similar(embedding)
+        appraisal = blend_appraisal(appraise(text), [m["appraisal"] for m in neighbors])
         seen = recurrence(embedding)
 
         push = impact(appraisal)
-        personality = update_personality(personality, push)
+        personality = update_personality(personality, push, recurrence=seen)
 
         create_memory(text, embedding, appraisal, push, personality)
         save_personality(personality)

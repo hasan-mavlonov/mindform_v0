@@ -13,10 +13,10 @@ Run with: python simulation.py
 
 from encoder import encode_text
 from personality import load_personality, save_personality, read_traits
-from appraisal import appraise
+from appraisal import appraise, blend_appraisal
 from impact import impact
 from updater import update_personality
-from memory import create_memory, recurrence
+from memory import create_memory, recurrence, retrieve_similar
 from response import generate_response
 
 
@@ -24,11 +24,12 @@ def run_interaction(text):
     personality = load_personality()
 
     embedding = encode_text(text)
-    appraisal = appraise(text)
+    neighbors = retrieve_similar(embedding)
+    appraisal = blend_appraisal(appraise(text), [m["appraisal"] for m in neighbors])
     seen = recurrence(embedding)
 
     push = impact(appraisal)
-    personality = update_personality(personality, push)
+    personality = update_personality(personality, push, recurrence=seen)
 
     create_memory(text, embedding, appraisal, push, personality)
     save_personality(personality)

@@ -63,3 +63,14 @@ SETPOINT = 0.0              # dispositional baseline a trait relaxes toward
 
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
+
+# --- Memory feedback (recurrence shapes formation) ---
+# A recurring experience stirs LESS mood each time (habituation) but graduates into
+# DISPOSITION more strongly (chronicity / the corresponsive principle): the patterns
+# that recur across a life shape character even as they stop feeling novel.
+HABITUATION = 0.3      # mood damping:        push *= 1 / (1 + HABITUATION * recurrence)
+CHRONICITY = 0.5       # consolidation gain:  *= (1 + CHRONICITY * recurrence)
+# Retrieval-conditioned appraisal: a new experience is read partly through the
+# appraisals of similar remembered ones ("this reminds me of ...").
+RETRIEVAL_K = 5        # how many similar memories to retrieve
+RETRIEVAL_ALPHA = 0.3  # weight on the retrieved appraisal prior (0 = ignore memory)

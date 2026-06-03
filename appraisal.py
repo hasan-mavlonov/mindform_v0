@@ -14,11 +14,32 @@ same MiniLM-embedding + regression-head recipe as the Pandora readout model.
 """
 
 
+from config import RETRIEVAL_ALPHA
+
+
 def appraise(text):
     head = _try_head()
     if head is not None:
         return head(text)
     return _heuristic_appraise(text)
+
+
+def blend_appraisal(raw, neighbors, alpha=RETRIEVAL_ALPHA):
+    """Read an experience partly through the appraisals of similar remembered ones.
+
+    Returns a convex blend of the ``raw`` appraisal and the mean of ``neighbors``
+    (past appraisal dicts). With no neighbors it is the raw appraisal unchanged, so
+    the first time something happens it is appraised on its own terms; only once a
+    history exists does memory tint the reading ("this reminds me of ..."). The blend
+    is a convex combination, so every value stays within the existing [-1, 1] range.
+    """
+    if not neighbors:
+        return dict(raw)
+    blended = {}
+    for key, value in raw.items():
+        mean = sum(n.get(key, 0.0) for n in neighbors) / len(neighbors)
+        blended[key] = (1 - alpha) * value + alpha * mean
+    return blended
 
 
 def _try_head():
