@@ -20,3 +20,9 @@ env/
 
 # Model / data caches
 .cache/
+
+# Trained model checkpoints (regenerate via train_trait_model.py / bootstrap)
+*.pth
+
+# Generated runtime state + built datasets (recreated on run)
+data/
