@@ -5,8 +5,8 @@ import os
 
 import numpy as np
 
-from config import RECURRENCE_THRESHOLD
-from personality import read_traits
+from config import RECURRENCE_THRESHOLD, RETRIEVAL_K
+from personality import read_traits, read_state
 
 MEMORY_FILE = "data/memories.json"
 
@@ -34,6 +34,7 @@ def create_memory(text, embedding, appraisal, push, personality_after):
         "appraisal": appraisal,
         "push": push,
         "traits_after": read_traits(personality_after),
+        "state_after": read_state(personality_after),
     }
     memories = load_memories()
     memories.append(memory)
@@ -53,10 +54,24 @@ def _cosine(a, b):
 
     return float(a @ b / (na * nb)) if na and nb else 0.0
 
+def _matches(embedding):
+    """Past memories above the recurrence threshold, most similar first."""
+    scored = []
+    for m in load_memories():
+        emb = m.get("embedding")
+        if emb:
+            sim = _cosine(embedding, emb)
+            if sim >= RECURRENCE_THRESHOLD:
+                scored.append((sim, m))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return scored
+
+
+def retrieve_similar(embedding, k=RETRIEVAL_K):
+    """The k most similar past memories; their appraisals condition a new experience."""
+    return [m for _, m in _matches(embedding)[:k]]
+
+
 def recurrence(embedding):
-    """How many past memories resemble this one (for display / insight)."""
-    return sum(
-        1 for m in load_memories()
-        if m.get("embedding")
-        and _cosine(embedding, m["embedding"]) >= RECURRENCE_THRESHOLD
-    )
+    """How many past memories resemble this one (chronicity signal for formation)."""
+    return len(_matches(embedding))

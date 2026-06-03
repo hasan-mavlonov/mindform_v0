@@ -42,11 +42,35 @@ M = {
 }
 
 # --- Formation rate ---
-# push = FORMATION_RATE * salience * (M . appraisal); updater.py then applies it
-# with diminishing returns (1 - |trait|). Tuned so a vivid social experience moves
-# extraversion by ~0.3 on the first occurrence (0.00 -> 0.30 -> 0.51 -> ...).
-# Lower it for slower, more gradual personality formation.
+# push = FORMATION_RATE * salience * (M . appraisal). In the two-timescale model
+# (see below) the push lands on the fast STATE layer (mood), so FORMATION_RATE is
+# how strongly a single experience moves mood -- ~0.2-0.3 for a vivid experience.
 FORMATION_RATE = 1.3
+
+# --- Two-timescale dynamics: fast STATE (mood) vs slow TRAIT (disposition) ---
+# A persistent personality is not the same as a momentary reaction, so each trait
+# axis carries two values (see personality.py / updater.py):
+#   state  -- fast: every experience pushes it; it decays back toward 0 (mood fades)
+#   trait  -- slow: integrates SUSTAINED state, with diminishing returns, and drifts
+#             back toward a set-point absent reinforcement (set-point theory)
+# This is what makes "formation over time" mean something: one vivid event moves
+# mood a lot and disposition barely; only a repeated/sustained pattern of mood
+# graduates into a lasting trait, and an unreinforced trait partially relaxes back.
+STATE_DECAY = 0.30          # fraction of mood that fades each experience
+CONSOLIDATION_RATE = 0.05   # how much sustained state graduates into disposition
+HOMEOSTASIS = 0.01          # set-point return rate of the slow trait toward SETPOINT
+SETPOINT = 0.0              # dispositional baseline a trait relaxes toward
 
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
+
+# --- Memory feedback (recurrence shapes formation) ---
+# A recurring experience stirs LESS mood each time (habituation) but graduates into
+# DISPOSITION more strongly (chronicity / the corresponsive principle): the patterns
+# that recur across a life shape character even as they stop feeling novel.
+HABITUATION = 0.3      # mood damping:        push *= 1 / (1 + HABITUATION * recurrence)
+CHRONICITY = 0.5       # consolidation gain:  *= (1 + CHRONICITY * recurrence)
+# Retrieval-conditioned appraisal: a new experience is read partly through the
+# appraisals of similar remembered ones ("this reminds me of ...").
+RETRIEVAL_K = 5        # how many similar memories to retrieve
+RETRIEVAL_ALPHA = 0.3  # weight on the retrieved appraisal prior (0 = ignore memory)
