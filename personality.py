@@ -1,32 +1,49 @@
-"""Persistent personality state on two timescales.
+"""Persistent per-agent personality state.
 
-Each of the five trait axes carries two values:
+Each of the five trait axes carries:
 
     state  -- fast "mood": every experience pushes it, and it decays toward 0.
     trait  -- slow "disposition": integrates sustained state, with diminishing
-              returns, and relaxes back toward a set-point absent reinforcement.
+              returns, and relaxes back toward this agent's CORE absent reinforcement.
+    trait_var -- slow within-person variability of expression (Whole Trait Theory).
 
-Both live in [-1, 1] and start at 0.0. The slow ``trait`` is what we mean by
-"personality"; the fast ``state`` is the current reaction. See updater.py for the
-dynamics and config.py for the constants. State persists to disk as JSON.
+The agent also carries a per-axis ``core`` -- its innate temperament / baseline, the
+"home" each trait relaxes toward (homeostasis). Two agents with different cores
+diverge under identical experience: this is the "changed based on who he was" part.
+
+All values live in [-1, 1]. The slow ``trait`` is what we mean by "personality"; the
+fast ``state`` is the current reaction. See updater.py for the dynamics and config.py
+for the constants. State persists to disk as JSON.
 """
 
 import json
 import os
 
-from config import BASIS, BASIS_NAMES
+from config import BASIS, BASIS_NAMES, SETPOINT
 
 PERSONALITY_FILE = "data/personality.json"
 
 
-def default_personality():
-    # Per axis: state (fast mood), trait (slow disposition / distribution mean),
-    # trait_var (slow within-person variance of expression -> dispersion, Whole
-    # Trait Theory). See updater.py / config.py.
+def default_personality(core=None):
+    """A blank-slate agent (every axis 0), or one seeded with a ``core`` temperament.
+
+    ``core`` is an optional {axis: value} map (axis = single letter, e.g. "N"); axes
+    left out default to SETPOINT. Disposition starts AT the core, so an agent begins
+    as its temperament and drifts around it. Use ``new_agent`` for the common case.
+    """
+    core = core or {}
+    core = {d: float(core.get(d, SETPOINT)) for d in BASIS}
     return {
-        "traits": {d: {"state": 0.0, "trait": 0.0, "trait_var": 0.0} for d in BASIS},
+        "traits": {d: {"state": 0.0, "trait": core[d], "trait_var": 0.0} for d in BASIS},
+        "core": core,
         "experience_count": 0,
     }
+
+
+def new_agent(core):
+    """Spawn an agent with a temperament, e.g. ``new_agent({"N": 0.6, "E": -0.3})``
+    for an anxious introvert. Sugar for ``default_personality(core)``."""
+    return default_personality(core)
 
 
 def load_personality():
@@ -55,6 +72,12 @@ def migrate(data):
     """
     personality = default_personality()
     personality["experience_count"] = data.get("experience_count", 0)
+
+    core = data.get("core")
+    if isinstance(core, dict):                                # preserve temperament
+        for key in personality["core"]:
+            if key in core:
+                personality["core"][key] = float(core[key])
 
     traits = data.get("traits")
     if isinstance(traits, dict):
@@ -91,6 +114,12 @@ def read_traits(personality):
 def read_state(personality):
     """Human-readable current mood (the fast state): {long_name: value}."""
     return {BASIS_NAMES[d]: layers["state"] for d, layers in personality["traits"].items()}
+
+
+def read_core(personality):
+    """Human-readable innate temperament / baseline each trait relaxes toward."""
+    core = personality.get("core", {})
+    return {BASIS_NAMES[d]: float(core.get(d, SETPOINT)) for d in BASIS}
 
 
 def read_variability(personality):

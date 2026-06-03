@@ -58,8 +58,28 @@ FORMATION_RATE = 1.3
 # graduates into a lasting trait, and an unreinforced trait partially relaxes back.
 STATE_DECAY = 0.30          # fraction of mood that fades each experience
 CONSOLIDATION_RATE = 0.05   # how much sustained state graduates into disposition
-HOMEOSTASIS = 0.01          # set-point return rate of the slow trait toward SETPOINT
-SETPOINT = 0.0              # dispositional baseline a trait relaxes toward
+HOMEOSTASIS = 0.01          # return rate of the slow trait toward its core baseline
+SETPOINT = 0.0              # default core baseline when an agent is given no temperament
+
+# --- State-dependent formation: SAME experience, DIFFERENT effect per agent --------
+# "A single text nudges the personality, then the personality is changed based on who
+# he was." Three deterministic levers make the nudge depend on the current agent, so
+# two agents diverge under identical input -- with NO LLM in the update path:
+#   (1) APPRAISAL BIAS   -- current traits + mood color how the event is READ, so the
+#       same text becomes a different *experience* (can even flip the direction of
+#       change).                                    [appraisal.bias_appraisal]
+#   (2) REACTIVITY GAIN  -- emotionally reactive (high-N) agents are moved more by
+#       adverse events.                             [impact.reactivity]
+#   (3) PLASTICITY DECAY -- the disposition crystallizes as experience accumulates
+#       (rank-order stability rises with age -- the one robust law).   [updater]
+APPRAISAL_BIAS = {
+    "neuroticism_threat": 0.5,   # high N reads a negative event as more threatening
+    "openness_novelty":   0.4,   # high O reads novelty as more positive (valence)
+    "mood_congruence":    0.3,   # current mood tints valence (good mood -> reads good)
+}
+REACTIVITY_N = 0.6               # push *= 1 + REACTIVITY_N * max(0, N) * threat_load
+PLASTICITY_BASE = 1.0            # young agents form fast ...
+PLASTICITY_HALFLIFE = 80.0       # ... then crystallize: rho = BASE / (1 + count/HALFLIFE)
 
 # --- Density-distribution layer (Whole Trait Theory): per-axis dispersion ---
 # A trait is not a point but a DISTRIBUTION of momentary states (Fleeson): a steady

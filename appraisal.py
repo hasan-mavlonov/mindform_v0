@@ -4,9 +4,14 @@ The appraisal vector is the experience representation that drives personality
 formation -- the causal ingredients of change (valence, intensity, control,
 outcome, ...), NOT a trait-expression reading. See ``config.APPRAISAL_SCHEMA``.
 
-Resolution order:
+Raw extraction (text -> appraisal), in resolution order:
     1. learned affect/appraisal head (appraisal_head.pth) if it has been trained
     2. heuristic lexicon extractor                       (always available)
+
+Two tints are then applied on top, so the same text is read differently depending
+on context and on the agent (both deterministic, no LLM):
+    - blend_appraisal : "this reminds me of ..."  (memory-conditioned)
+    - bias_appraisal  : "and I'm the kind of agent who ..."  (personality-conditioned)
 
 There is deliberately no LLM/API dependency. The learned head is trained on
 existing cross-sectional affect/appraisal corpora (see ``bootstrap/``), using a
@@ -14,7 +19,11 @@ MiniLM-embedding + small-regression-head recipe.
 """
 
 
-from config import RETRIEVAL_ALPHA
+from config import RETRIEVAL_ALPHA, APPRAISAL_BIAS
+
+
+def _clamp(value, minimum=-1.0, maximum=1.0):
+    return max(minimum, min(maximum, value))
 
 
 def appraise(text):
@@ -40,6 +49,43 @@ def blend_appraisal(raw, neighbors, alpha=RETRIEVAL_ALPHA):
         mean = sum(n.get(key, 0.0) for n in neighbors) / len(neighbors)
         blended[key] = (1 - alpha) * value + alpha * mean
     return blended
+
+
+def bias_appraisal(appraisal, personality):
+    """Color the raw appraisal by WHO THE AGENT IS (slow traits) and HOW IT FEELS NOW
+    (fast mood). The same text becomes a different *experience* for different agents,
+    so the resulting nudge -- and even its direction -- depends on who he was.
+
+    Three legible couplings (strengths in config.APPRAISAL_BIAS):
+      1. high Neuroticism reads a negative event as more threatening (lowers
+         threat_challenge), so adversity raises N more for an already-anxious agent;
+      2. high Openness reads novelty as more positive (raises valence);
+      3. mood-congruence: the agent's current mood tints valence -- in a good mood it
+         reads the next event a little more positively, in a bad mood more negatively.
+
+    Returns a new appraisal dict; every value stays within its [-1, 1] / [0, 1] range.
+    With a blank-slate agent (all traits and mood 0) this is the identity, so a fresh
+    agent appraises events on their own terms.
+    """
+    traits = personality["traits"]
+    o = traits["O"]["trait"]
+    n = traits["N"]["trait"]
+    # mood proxy: positive affect = extraverted-up and neurotic-down right now
+    mood_valence = traits["E"]["state"] - traits["N"]["state"]
+
+    a = dict(appraisal)
+    negativity = max(0.0, -a.get("valence", 0.0))
+    # 1. neuroticism -> threat bias on negative events
+    a["threat_challenge"] = _clamp(
+        a.get("threat_challenge", 0.0)
+        - APPRAISAL_BIAS["neuroticism_threat"] * max(0.0, n) * negativity
+    )
+    # 2. openness -> novelty positivity
+    valence = a.get("valence", 0.0) + APPRAISAL_BIAS["openness_novelty"] * max(0.0, o) * a.get("novelty", 0.0)
+    # 3. mood-congruence
+    valence += APPRAISAL_BIAS["mood_congruence"] * mood_valence
+    a["valence"] = _clamp(valence)
+    return a
 
 
 def _try_head():

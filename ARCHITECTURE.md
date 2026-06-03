@@ -13,11 +13,18 @@ mood is sustained and that relaxes back toward a set-point when it is not; and a
 "the personality"; together the layers make each trait a *distribution* of states,
 not a point (Whole Trait Theory).
 
+A single text nudges the personality, **and the nudge depends on who the agent
+already was** — so two agents diverge under identical input. This is fully encoded
+(no LLM in the update path).
+
 ```
 text -> MiniLM embedding (encoder.py)
      -> appraisal vector  (appraisal.py: heuristic now / learned head later)
-     -> signed push        (impact.py)
-     -> three-layer update: fast mood + slow disposition + dispersion (updater.py)
+     -> memory tint        (appraisal.blend_appraisal:  "this reminds me of ...")
+     -> who-he-was tint    (appraisal.bias_appraisal:   read through the agent's traits+mood)
+     -> signed push        (impact.py: reactivity gain scales it by who he is)
+     -> three-layer update: fast mood + slow disposition + dispersion,
+        crystallizing with age, relaxing toward the agent's core (updater.py)
      -> persist + memory   (personality.py, memory.py)
 ```
 
@@ -28,14 +35,16 @@ Reddit author attribution, not personality state, was never validated, and
 estimating an observed state is backwards. See the review doc.)
 
 ## Representation
-- **Personality** (`personality.py`): per trait axis, three values —
-  `{"traits": {k: {"state", "trait", "trait_var"}}, "experience_count"}`.
+- **Personality** (`personality.py`): per-agent, per trait axis —
+  `{"traits": {k: {"state", "trait", "trait_var"}}, "core": {k: ...}, "experience_count"}`.
   `state` is fast mood (every experience moves it, it decays); `trait` is the slow
   disposition / the distribution's mean (integrates sustained state, relaxes toward
-  a set-point); `trait_var` is the within-person variability of expression (a slow
-  EWMA of squared mood swings, MSSD). The slow `trait` is "the personality"; its
-  dispersion (`sqrt(trait_var)`) distinguishes a steady trait from a volatile one
-  with the same mean.
+  the agent's core); `trait_var` is the within-person variability of expression (a slow
+  EWMA of squared mood swings, MSSD). `core` is the agent's innate temperament — the
+  baseline each trait relaxes toward; two agents with different cores diverge under
+  identical experience. Spawn one with `new_agent({"N": 0.6, "E": -0.3})`. The slow
+  `trait` is "the personality"; its dispersion (`sqrt(trait_var)`) distinguishes a
+  steady trait from a volatile one with the same mean.
 - **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector —
   `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
   — the causal ingredients of change, not a trait-expression reading.
@@ -43,21 +52,32 @@ estimating an observed state is backwards. See the review doc.)
   appraisals onto and read trajectories out of — not the mechanism. `config.BASIS`
   is swappable; `config.M` is the only basis-specific component.
 
-## Push + update (three layers)
+## Push + update (state-dependent, three layers)
 ```
-salience = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
-pull     = M . appraisal                          # which traits move, signed (config.M)
-push[k]  = clamp(FORMATION_RATE * salience * pull[k])
+# (0) who-he-was tint: the agent reads the event through its own traits + mood
+appraisal = bias_appraisal(appraisal, agent)      # e.g. high-N -> reads more threat
+
+salience  = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
+pull      = M . appraisal                         # which traits move, signed (config.M)
+gain      = 1 + REACTIVITY_N*max(0,N)*threat_load # high-N agents react harder to adversity
+push[k]   = clamp(FORMATION_RATE * gain * salience * pull[k])
 
 # fast mood: every experience moves it; it decays back toward 0
-state[k] <- clamp(state[k]*(1 - STATE_DECAY) + push[k])
-# slow disposition: integrates SUSTAINED mood, with diminishing returns ...
-trait[k] <- clamp(trait[k] + CONSOLIDATION_RATE * state[k] * (1 - |trait[k]|))
-# ... and relaxes back toward a set-point when unreinforced (homeostasis)
-trait[k] <- clamp(trait[k] - HOMEOSTASIS * (trait[k] - SETPOINT))
+state[k]  <- clamp(state[k]*(1 - STATE_DECAY) + push[k])
+# slow disposition: integrates SUSTAINED mood, with diminishing returns, and
+# crystallizes with age (plasticity falls as experience_count grows)
+plasticity = PLASTICITY_BASE / (1 + experience_count/PLASTICITY_HALFLIFE)
+trait[k]  <- clamp(trait[k] + CONSOLIDATION_RATE * plasticity * state[k] * (1 - |trait[k]|))
+# ... and relaxes back toward THIS AGENT'S CORE when unreinforced (homeostasis)
+trait[k]  <- clamp(trait[k] - HOMEOSTASIS * (trait[k] - core[k]))
 # dispersion: within-person variability of expression (drift-invariant, MSSD-style)
 trait_var[k] <- (1-VARIABILITY_RATE)*trait_var[k] + VARIABILITY_RATE*(state[k]-prev_state[k])^2
 ```
+**"Changed based on who he was"** enters in three encoded places: the agent *reads*
+the event through its traits/mood (`bias_appraisal` — can flip the direction of
+change), adverse events *land harder* on reactive agents (`reactivity` gain), and the
+disposition *crystallizes* with age and *returns to the agent's core*. Same text,
+different agent → different nudge (see `acceptance_test.py` checks 9–11).
 A single vivid party moves *mood* ~0.2 but *disposition* ~0.01; only repetition
 graduates mood into a lasting trait (E disposition: 0.01 -> 0.10 -> 0.23 -> 0.63
 over 40 parties, bounded), and an unreinforced trait partially relaxes back toward

@@ -14,7 +14,7 @@ Run with: python simulation.py
 
 from encoder import encode_text
 from personality import load_personality, save_personality, read_traits
-from appraisal import appraise, blend_appraisal
+from appraisal import appraise, blend_appraisal, bias_appraisal
 from impact import impact
 from updater import update_personality
 from memory import create_memory, recurrence, retrieve_similar
@@ -26,10 +26,11 @@ def run_interaction(text):
 
     embedding = encode_text(text)
     neighbors = retrieve_similar(embedding)
-    appraisal = blend_appraisal(appraise(text), [m["appraisal"] for m in neighbors])
+    appraisal = blend_appraisal(appraise(text), [m["appraisal"] for m in neighbors])  # memory tint
+    appraisal = bias_appraisal(appraisal, personality)                                # who-he-was tint
     seen = recurrence(embedding)
 
-    push = impact(appraisal)
+    push = impact(appraisal, personality)
     personality = update_personality(personality, push, recurrence=seen)
 
     create_memory(text, embedding, appraisal, push, personality)

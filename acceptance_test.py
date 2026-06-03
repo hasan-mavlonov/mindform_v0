@@ -20,8 +20,8 @@ Run: python3 acceptance_test.py
 
 import math
 
-from personality import default_personality
-from appraisal import appraise, blend_appraisal
+from personality import default_personality, new_agent
+from appraisal import appraise, blend_appraisal, bias_appraisal
 from impact import impact
 from updater import update_personality
 
@@ -99,6 +99,35 @@ for _ in range(15):
 disp_consistent_N = disp(consistent, "N")
 disp_volatile_N = disp(volatile, "N")
 
+# --- 9. state-dependence: the SAME text nudges two agents differently, because each
+#        reads and reacts through who it already is ("changed based on who he was") ---
+adverse = appraise("I felt sad about the news.")   # mildly negative, NOT saturated
+anxious0 = new_agent({"N": 0.6})        # an emotionally reactive agent
+calm0 = new_agent({"N": -0.6})          # a steady agent
+read_anx = bias_appraisal(adverse, anxious0)    # same text, read through each agent
+read_calm = bias_appraisal(adverse, calm0)
+push_anx_N = impact(read_anx, anxious0)["N"]
+push_calm_N = impact(read_calm, calm0)["N"]
+
+# --- 10. crystallization: a young agent forms faster than a seasoned one (same event) ---
+young = default_personality()
+seasoned = default_personality()
+seasoned["experience_count"] = 300
+young_dE = trait(update_personality(young, impact(party)), "E")
+seasoned_dE = trait(update_personality(seasoned, impact(party)), "E")
+
+# --- 11. divergence: under an IDENTICAL adverse life, the already-anxious agent ends
+#         up more neurotic than the steady one (the corresponsive principle) ---
+def live(p, text, n):
+    for _ in range(n):
+        a = bias_appraisal(appraise(text), p)
+        p = update_personality(p, impact(a, p))
+    return p
+
+adverse_text = "I failed and felt afraid and helpless."
+anx_end_N = trait(live(new_agent({"N": 0.6}), adverse_text, 20), "N")
+calm_end_N = trait(live(new_agent({"N": -0.6}), adverse_text, 20), "N")
+
 print(f"1) one party:      mood_E={s_E:+.3f}  trait_E={t_E:+.3f}")
 print(f"2) trait_E (1,5,10,20,40): {[round(traj[i],3) for i in (0,4,9,19,39)]}")
 print(f"3) spike->quiet:   mood_E={state(p3,'E'):+.3f}  trait_E residue={trait(p3,'E'):+.4f}")
@@ -108,6 +137,10 @@ print(f"6) maturation:     trait_C={trait(p6,'C'):+.3f}  trait_N={trait(p6,'N'):
 print(f"7) memory feedback: mood fresh={state(fresh,'E'):+.3f} recurred={state(recurred,'E'):+.3f} | "
       f"trait fresh={trait(fresh,'E'):+.4f} recurred={trait(recurred,'E'):+.4f} | blend_valence={blended['valence']:+.2f}")
 print(f"8) dispersion N:   consistent_sd={disp_consistent_N:.3f}  volatile_sd={disp_volatile_N:.3f}")
+print(f"9) who-he-was:     same text -> push_N anxious={push_anx_N:+.3f} calm={push_calm_N:+.3f} | "
+      f"read threat anx={read_anx['threat_challenge']:+.2f} calm={read_calm['threat_challenge']:+.2f}")
+print(f"10) crystallize:   young dE={young_dE:+.4f}  seasoned dE={seasoned_dE:+.4f}")
+print(f"11) divergence:    same adverse life -> N anxious={anx_end_N:+.3f}  calm={calm_end_N:+.3f}")
 
 checks = {
     "mood moves on first experience (state_E > 0.15)": s_E > 0.15,
@@ -132,6 +165,14 @@ checks = {
     "density: a volatile life has wider state dispersion than a consistent one":
         disp_volatile_N > disp_consistent_N,
     "density: a consistent life keeps dispersion small (< 0.05)": disp_consistent_N < 0.05,
+    "who-he-was: same text reads as more threat for the anxious agent":
+        read_anx["threat_challenge"] < read_calm["threat_challenge"],
+    "who-he-was: same text pushes N harder for the anxious agent":
+        push_anx_N > push_calm_N,
+    "crystallization: a young agent forms faster than a seasoned one":
+        young_dE > seasoned_dE,
+    "divergence: identical adverse life leaves the anxious agent more neurotic":
+        anx_end_N > calm_end_N,
 }
 
 print("\nRESULTS:")
