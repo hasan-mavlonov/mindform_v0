@@ -2,8 +2,8 @@
 
 Outputs the ``config.APPRAISAL_DIMS``. Unit dims pass through a sigmoid, signed
 dims through a tanh. Trained on existing affect/appraisal corpora (VAD / emotion /
-appraisal) by ``bootstrap/train_appraisal_head.py`` -- the same MiniLM-embedding +
-regression-head recipe used for the Pandora readout, just on the right labels.
+appraisal) by ``bootstrap/train_appraisal_head.py`` -- a MiniLM-embedding +
+small-regression-head recipe on appraisal labels (the causal mediator of formation).
 """
 
 import os

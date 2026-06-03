@@ -9,8 +9,8 @@ Resolution order:
     2. heuristic lexicon extractor                       (always available)
 
 There is deliberately no LLM/API dependency. The learned head is trained on
-existing cross-sectional affect/appraisal corpora (see ``bootstrap/``), using the
-same MiniLM-embedding + regression-head recipe as the Pandora readout model.
+existing cross-sectional affect/appraisal corpora (see ``bootstrap/``), using a
+MiniLM-embedding + small-regression-head recipe.
 """
 
 

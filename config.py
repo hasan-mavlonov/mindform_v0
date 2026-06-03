@@ -61,6 +61,16 @@ CONSOLIDATION_RATE = 0.05   # how much sustained state graduates into dispositio
 HOMEOSTASIS = 0.01          # set-point return rate of the slow trait toward SETPOINT
 SETPOINT = 0.0              # dispositional baseline a trait relaxes toward
 
+# --- Density-distribution layer (Whole Trait Theory): per-axis dispersion ---
+# A trait is not a point but a DISTRIBUTION of momentary states (Fleeson): a steady
+# extravert and a volatile one can share the same mean. We track the within-person
+# variability of expression as a slow EWMA of squared successive swings in mood
+# (MSSD, a standard within-person instability index); its sqrt is reported as the
+# trait's "dispersion" (see evaluation.py). It is drift-invariant -- a strong but
+# steady stream stays low-dispersion. Within-person variability is itself a stable
+# individual difference, so the rate is slow.
+VARIABILITY_RATE = 0.10     # EWMA rate for the per-axis state-density variance
+
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
 

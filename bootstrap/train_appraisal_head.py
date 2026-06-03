@@ -1,8 +1,8 @@
 """Train the affect/appraisal head from data/appraisal_dataset.jsonl.
 
-Same recipe as train_trait_model.py (MiniLM embeddings -> small regression head),
-but the target is the appraisal vector rather than author OCEAN traits. Run
-locally once the dataset exists (needs torch + sentence-transformers):
+MiniLM embeddings -> small regression head, with the appraisal vector as the
+target (the causal mediator of formation), NOT author trait scores. Run locally
+once the dataset exists (needs torch + sentence-transformers):
 
     python bootstrap/build_affect_dataset.py
     python bootstrap/train_appraisal_head.py

@@ -20,8 +20,11 @@ PERSONALITY_FILE = "data/personality.json"
 
 
 def default_personality():
+    # Per axis: state (fast mood), trait (slow disposition / distribution mean),
+    # trait_var (slow within-person variance of expression -> dispersion, Whole
+    # Trait Theory). See updater.py / config.py.
     return {
-        "traits": {d: {"state": 0.0, "trait": 0.0} for d in BASIS},
+        "traits": {d: {"state": 0.0, "trait": 0.0, "trait_var": 0.0} for d in BASIS},
         "experience_count": 0,
     }
 
@@ -61,6 +64,7 @@ def migrate(data):
             if isinstance(value, dict):                       # already two-timescale
                 personality["traits"][key]["state"] = float(value.get("state", 0.0))
                 personality["traits"][key]["trait"] = float(value.get("trait", 0.0))
+                personality["traits"][key]["trait_var"] = float(value.get("trait_var", 0.0))
             else:                                             # single-layer float
                 personality["traits"][key]["trait"] = float(value)
         return personality
@@ -87,3 +91,13 @@ def read_traits(personality):
 def read_state(personality):
     """Human-readable current mood (the fast state): {long_name: value}."""
     return {BASIS_NAMES[d]: layers["state"] for d, layers in personality["traits"].items()}
+
+
+def read_variability(personality):
+    """Human-readable within-person variance of expression: {long_name: value}.
+
+    The dispersion of the trait's state-density (Whole Trait Theory); its sqrt is
+    the reported SD (see evaluation.observed_dispersion).
+    """
+    return {BASIS_NAMES[d]: layers.get("trait_var", 0.0)
+            for d, layers in personality["traits"].items()}

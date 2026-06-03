@@ -12,9 +12,13 @@ set-point return.
   4. an unreinforced built-up trait partially relaxes back toward its set-point
   5. affective sign is immediate (mood); the lasting trait forms with repetition
   6. maturation: a sustained stream of mastery raises C and lowers N over time
+  8. density (Whole Trait Theory): a volatile life has wider within-person state
+     dispersion than a consistent one, even when the disposition is comparable
 
 Run: python3 acceptance_test.py
 """
+
+import math
 
 from personality import default_personality
 from appraisal import appraise, blend_appraisal
@@ -30,6 +34,11 @@ def state(p, d):
 
 def trait(p, d):
     return p["traits"][d]["trait"]
+
+
+def disp(p, d):
+    """Within-person dispersion (Whole Trait Theory SD) of an axis."""
+    return math.sqrt(p["traits"][d]["trait_var"])
 
 
 def run(p, appraisal, n=1):
@@ -80,6 +89,16 @@ recurred = update_personality(default_personality(), impact(party), recurrence=4
 neg = {k: -v for k, v in party.items()}
 blended = blend_appraisal(party, [neg])
 
+# --- 8. density layer (Whole Trait Theory): a volatile life (alternating terror and
+#        mastery) has wider within-person N dispersion than a consistent mastery one ---
+consistent = run(default_personality(), mastery, n=30)
+volatile = default_personality()
+for _ in range(15):
+    volatile = run(volatile, terror)
+    volatile = run(volatile, mastery)
+disp_consistent_N = disp(consistent, "N")
+disp_volatile_N = disp(volatile, "N")
+
 print(f"1) one party:      mood_E={s_E:+.3f}  trait_E={t_E:+.3f}")
 print(f"2) trait_E (1,5,10,20,40): {[round(traj[i],3) for i in (0,4,9,19,39)]}")
 print(f"3) spike->quiet:   mood_E={state(p3,'E'):+.3f}  trait_E residue={trait(p3,'E'):+.4f}")
@@ -88,6 +107,7 @@ print(f"5) N immediate:    terror={imm_terror:+.3f} mastery={imm_mastery:+.3f} |
 print(f"6) maturation:     trait_C={trait(p6,'C'):+.3f}  trait_N={trait(p6,'N'):+.3f}")
 print(f"7) memory feedback: mood fresh={state(fresh,'E'):+.3f} recurred={state(recurred,'E'):+.3f} | "
       f"trait fresh={trait(fresh,'E'):+.4f} recurred={trait(recurred,'E'):+.4f} | blend_valence={blended['valence']:+.2f}")
+print(f"8) dispersion N:   consistent_sd={disp_consistent_N:.3f}  volatile_sd={disp_volatile_N:.3f}")
 
 checks = {
     "mood moves on first experience (state_E > 0.15)": s_E > 0.15,
@@ -109,6 +129,9 @@ checks = {
     "recurrence boosts consolidation (chronicity)": trait(recurred, "E") > trait(fresh, "E"),
     "retrieval blends appraisal toward memory": blended["valence"] < party["valence"],
     "blend with no memory is identity": blend_appraisal(party, []) == party,
+    "density: a volatile life has wider state dispersion than a consistent one":
+        disp_volatile_N > disp_consistent_N,
+    "density: a consistent life keeps dispersion small (< 0.05)": disp_consistent_N < 0.05,
 }
 
 print("\nRESULTS:")

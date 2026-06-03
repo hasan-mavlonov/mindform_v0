@@ -3,10 +3,11 @@
     text -> MiniLM embedding
          -> appraisal vector   (appraisal.py: heuristic now, learned head later)
          -> signed push        (impact.py: appraisal -> per-trait push)
-         -> diminishing-returns update of the five traits (updater.py)
+         -> two-timescale update of the five traits (updater.py)
          -> memory             (memory.py)
 
-The Pandora text->OCEAN model is used only as a read-only readout (readout.py).
+The formed personality is observed directly (evaluation.py), not estimated from
+text. There is no text->trait model in the loop. See docs/RESEARCH_REVIEW.md.
 
 Run with: python simulation.py
 """
