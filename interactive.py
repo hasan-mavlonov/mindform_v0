@@ -54,7 +54,7 @@ def run():
             continue
 
         # --- CORE PIPELINE ---
-        embedding = encode_text(text)
+        embedding = encode_text(text)[0]
         appraisal = appraise(text)
         seen = recurrence(embedding)
 

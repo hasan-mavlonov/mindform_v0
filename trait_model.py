@@ -77,9 +77,14 @@ def predict(text):
     model = load_model()
 
     embedding = encode_text(text)
-    x = torch.tensor(embedding, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+
+    x = torch.tensor(
+        embedding,
+        dtype=torch.float32,
+        device=DEVICE
+    )
 
     with torch.no_grad():
-        scores = model(x)[0].tolist()
+        scores = model(x).squeeze(0).tolist()
 
     return dict(zip(TRAITS, scores))

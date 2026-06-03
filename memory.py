@@ -42,10 +42,16 @@ def create_memory(text, embedding, appraisal, push, personality_after):
 
 
 def _cosine(a, b):
-    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
-    na, nb = np.linalg.norm(a), np.linalg.norm(b)
-    return float(a @ b / (na * nb)) if na and nb else 0.0
+    a = np.asarray(a, dtype=float).reshape(-1)
+    b = np.asarray(b, dtype=float).reshape(-1)
 
+    if a.shape != b.shape:
+        return 0.0
+
+    na = np.linalg.norm(a)
+    nb = np.linalg.norm(b)
+
+    return float(a @ b / (na * nb)) if na and nb else 0.0
 
 def recurrence(embedding):
     """How many past memories resemble this one (for display / insight)."""
