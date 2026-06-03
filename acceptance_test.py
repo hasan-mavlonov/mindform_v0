@@ -1,11 +1,17 @@
-"""Acceptance test: text changes the five traits with diminishing returns.
+"""Acceptance test: two-timescale personality formation (stylized facts).
 
-Dependency-free (no torch / numpy / sentence-transformers). Demonstrates the model:
+Dependency-free (no torch / numpy / sentence-transformers). This is also the first
+"stylized-facts" ruler: it checks that the dynamics reproduce qualitative truths of
+personality development, not just that code runs. An empty push {} stands for a
+quiet period (time passing with no salient experience), isolating mood decay and
+set-point return.
 
-  * a vivid experience moves a trait visibly on the FIRST occurrence (party: E ~0 -> ~0.3)
-  * repeating it raises the trait by LESS each time (diminishing returns), bounded by 1
-  * the push is signed: an experience can lower a trait, not only raise it
-  * identical "fear" content moves N up (helpless) or down (mastery) via appraisal
+  1. one experience moves MOOD (state) a lot but DISPOSITION (trait) barely
+  2. repeating it accumulates the slow trait as a bounded S-curve (ramp -> diminish)
+  3. after a spike, mood fades back toward 0 but a small trait residue persists
+  4. an unreinforced built-up trait partially relaxes back toward its set-point
+  5. affective sign is immediate (mood); the lasting trait forms with repetition
+  6. maturation: a sustained stream of mastery raises C and lowers N over time
 
 Run: python3 acceptance_test.py
 """
@@ -15,43 +21,81 @@ from appraisal import appraise
 from impact import impact
 from updater import update_personality
 
-
-def trait(personality, dim):
-    return personality["traits"][dim]
+QUIET = {}   # empty push: a quiet period -> only mood decay + set-point return
 
 
-# --- diminishing returns: repeat a vivid party, watch E rise by less each time ---
-p = default_personality()
+def state(p, d):
+    return p["traits"][d]["state"]
+
+
+def trait(p, d):
+    return p["traits"][d]["trait"]
+
+
+def run(p, appraisal, n=1):
+    push = impact(appraisal) if appraisal is not QUIET else QUIET
+    for _ in range(n):
+        p = update_personality(p, push)
+    return p
+
+
 party = appraise("I went to a party and had fun.")
-es = [trait(p, "E")]
-for _ in range(5):
-    p = update_personality(p, impact(party))
-    es.append(trait(p, "E"))
-steps = [round(es[i + 1] - es[i], 3) for i in range(len(es) - 1)]
+terror = appraise("I am terrified of everything.")
+mastery = appraise("I faced my fear at the party and it went fine.")
 
-# --- signed: a lonely / isolating experience lowers E ---
-iso = update_personality(default_personality(),
-                         impact(appraise("I spent the whole week alone and sad.")))
+# --- 1. mood reacts fast, disposition barely moves on a single experience ---
+p1 = run(default_personality(), party)
+s_E, t_E = state(p1, "E"), trait(p1, "E")
 
-# --- mastery vs terror move N in opposite directions ---
-terror = update_personality(default_personality(),
-                            impact(appraise("I am terrified of everything.")))
-mastery = update_personality(default_personality(),
-                             impact(appraise("I faced my fear at the party and it went fine.")))
+# --- 2. repetition accumulates the slow trait: bounded S-curve ---
+p = default_personality()
+traj = []
+for _ in range(40):
+    p = run(p, party)
+    traj.append(trait(p, "E"))
+incr = [traj[i] - (traj[i - 1] if i else 0.0) for i in range(len(traj))]
 
-print("E after each party:", [round(e, 3) for e in es])
-print("per-party increase:", steps)
-print(f"E after isolation : {trait(iso, 'E'):+.3f}")
-print(f"N terror={trait(terror, 'N'):+.3f}   N mastery={trait(mastery, 'N'):+.3f}")
+# --- 3. spike then quiet: mood fades, trait residue persists ---
+p3 = run(run(default_personality(), party), QUIET, n=10)
+
+# --- 4. set-point return: build E up, then a long quiet period ---
+p4 = run(default_personality(), party, n=40)
+peak_E = trait(p4, "E")
+p4 = run(p4, QUIET, n=100)
+relaxed_E = trait(p4, "E")
+
+# --- 5. affective sign is immediate; trait forms with repetition ---
+imm_terror = state(run(default_personality(), terror), "N")
+imm_mastery = state(run(default_personality(), mastery), "N")
+form_terror = trait(run(default_personality(), terror, n=30), "N")
+form_mastery = trait(run(default_personality(), mastery, n=30), "N")
+
+# --- 6. maturation: sustained mastery raises C, lowers N ---
+p6 = run(default_personality(), mastery, n=40)
+
+print(f"1) one party:      mood_E={s_E:+.3f}  trait_E={t_E:+.3f}")
+print(f"2) trait_E (1,5,10,20,40): {[round(traj[i],3) for i in (0,4,9,19,39)]}")
+print(f"3) spike->quiet:   mood_E={state(p3,'E'):+.3f}  trait_E residue={trait(p3,'E'):+.4f}")
+print(f"4) set-point:      peak_E={peak_E:+.3f} -> relaxed_E={relaxed_E:+.3f}")
+print(f"5) N immediate:    terror={imm_terror:+.3f} mastery={imm_mastery:+.3f} | formed: terror={form_terror:+.3f} mastery={form_mastery:+.3f}")
+print(f"6) maturation:     trait_C={trait(p6,'C'):+.3f}  trait_N={trait(p6,'N'):+.3f}")
 
 checks = {
-    "first party moves E visibly (>0.15)": es[1] > 0.15,
-    "diminishing returns (each step smaller)": all(steps[i] > steps[i + 1]
-                                                   for i in range(len(steps) - 1)),
-    "bounded (E stays < 1)": es[-1] < 1.0,
-    "signed (isolation lowers E)": trait(iso, "E") < 0,
-    "terror raises N": trait(terror, "N") > 0,
-    "mastery lowers N": trait(mastery, "N") < 0,
+    "mood moves on first experience (state_E > 0.15)": s_E > 0.15,
+    "disposition barely moves on first experience (trait_E < 0.05)": t_E < 0.05,
+    "mood is faster than disposition (|state| > |trait|)": abs(s_E) > abs(t_E),
+    "repetition accumulates the trait (monotone up)": all(traj[i] < traj[i + 1] for i in range(len(traj) - 1)),
+    "trait stays bounded (< 1)": traj[-1] < 1.0,
+    "trait formation is substantial after repetition (> 0.3)": traj[-1] > 0.3,
+    "diminishing returns eventually (late increment < early-peak)": incr[-1] < incr[7],
+    "after a spike mood fades back toward 0 (|state_E| < 0.05)": abs(state(p3, "E")) < 0.05,
+    "a spike leaves a lasting trait residue (> 0)": trait(p3, "E") > 0,
+    "set-point return: unreinforced trait relaxes back": relaxed_E < peak_E,
+    "set-point return is partial, not erased/overshot (0 < relaxed < peak)": 0 < relaxed_E < peak_E,
+    "affective sign immediate: terror raises mood_N, mastery lowers it": imm_terror > 0 > imm_mastery,
+    "lasting trait forms with repetition: terror_N > mastery_N": form_terror > 0 > form_mastery,
+    "maturation: sustained mastery raises C": trait(p6, "C") > 0.2,
+    "maturation: sustained mastery lowers N": trait(p6, "N") < -0.2,
 }
 
 print("\nRESULTS:")
@@ -59,4 +103,4 @@ for name, ok in checks.items():
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
 
 assert all(checks.values()), "acceptance test FAILED"
-print("\nALL CHECKS PASSED -- text changes the five traits with diminishing returns.")
+print("\nALL CHECKS PASSED -- two-timescale formation reproduces the stylized facts.")

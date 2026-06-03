@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 from config import RECURRENCE_THRESHOLD
-from personality import read_traits
+from personality import read_traits, read_state
 
 MEMORY_FILE = "data/memories.json"
 
@@ -34,6 +34,7 @@ def create_memory(text, embedding, appraisal, push, personality_after):
         "appraisal": appraisal,
         "push": push,
         "traits_after": read_traits(personality_after),
+        "state_after": read_state(personality_after),
     }
     memories = load_memories()
     memories.append(memory)

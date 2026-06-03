@@ -10,7 +10,7 @@ Commands:
 """
 
 from personality import (
-    load_personality, save_personality, default_personality, read_traits
+    load_personality, save_personality, default_personality, read_traits, read_state
 )
 from encoder import encode_text
 from appraisal import appraise
@@ -21,9 +21,10 @@ from memory import create_memory, recurrence
 
 def print_traits(personality):
     traits = read_traits(personality)
-    print("\nCURRENT TRAITS:")
-    for k, v in traits.items():
-        print(f"  {k:18s}: {v:+.3f}")
+    mood = read_state(personality)
+    print("\nCURRENT PERSONALITY (disposition / mood):")
+    for k in traits:
+        print(f"  {k:18s}: trait {traits[k]:+.3f}   mood {mood[k]:+.3f}")
     print()
 
 

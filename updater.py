@@ -1,16 +1,21 @@
-"""Apply an experience's signed push to the five traits, with diminishing returns.
+"""Apply an experience's push on two timescales: fast mood, slow disposition.
 
-    trait <- clamp(trait + push * (1 - |trait|))
+Per experience, for each trait axis:
 
-The (1 - |trait|) factor is the diminishing-returns term: a push moves a trait by
-its full amount near 0 and by progressively less as the trait approaches +/-1, so
-the trait asymptotes toward the extreme instead of jumping past it.
+    1. mood fades, then this experience hits it (fast):
+           state <- clamp(state * (1 - STATE_DECAY) + push)
+    2. sustained mood consolidates into disposition, with diminishing returns (slow):
+           trait <- clamp(trait + CONSOLIDATION_RATE * state * (1 - |trait|))
+    3. set-point return: disposition drifts back toward baseline (homeostasis):
+           trait <- clamp(trait - HOMEOSTASIS * (trait - SETPOINT))
 
-    Example, a party with push_E = 0.3:
-        0.00 -> 0.30 -> 0.51 -> 0.66 -> 0.76 -> ...
-
-The push is signed, so experiences can lower a trait as well as raise it.
+So a single vivid experience moves mood a lot and disposition barely; only a
+repeated or sustained pattern of mood graduates into a lasting trait, and a trait
+that stops being reinforced partially relaxes back toward SETPOINT. The push is
+signed, so experiences can lower a trait as well as raise it.
 """
+
+from config import STATE_DECAY, CONSOLIDATION_RATE, HOMEOSTASIS, SETPOINT
 
 
 def clamp(value, minimum=-1.0, maximum=1.0):
@@ -18,10 +23,16 @@ def clamp(value, minimum=-1.0, maximum=1.0):
 
 
 def update_personality(personality, push):
-    """Return a new personality with each trait moved by its push (input unchanged)."""
-    traits = dict(personality["traits"])
-    for dim, value in traits.items():
-        traits[dim] = clamp(value + push.get(dim, 0.0) * (1 - abs(value)))
+    """Return a new personality with mood and disposition advanced (input unchanged)."""
+    traits = {}
+    for dim, layers in personality["traits"].items():
+        delta = push.get(dim, 0.0)
+
+        state = clamp(layers["state"] * (1 - STATE_DECAY) + delta)
+        trait = clamp(layers["trait"] + CONSOLIDATION_RATE * state * (1 - abs(layers["trait"])))
+        trait = clamp(trait - HOMEOSTASIS * (trait - SETPOINT))
+
+        traits[dim] = {"state": state, "trait": trait}
 
     return {
         "traits": traits,

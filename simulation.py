@@ -34,9 +34,9 @@ def run_interaction(text):
     save_personality(personality)
 
     print(f"\nINPUT: {text}   (seen {seen} similar before)")
-    print("\nPUSH  ->  TRAIT:")
-    for dim, value in personality["traits"].items():
-        print(f"  {dim}  push {push[dim]:+.3f}  ->  trait {value:+.3f}")
+    print("\nPUSH  ->  MOOD (state)  ->  DISPOSITION (trait):")
+    for dim, layers in personality["traits"].items():
+        print(f"  {dim}  push {push[dim]:+.3f}  ->  mood {layers['state']:+.3f}  ->  trait {layers['trait']:+.3f}")
     print(f"\nRESPONSE:\n  {generate_response(read_traits(personality))}")
 
     return personality
