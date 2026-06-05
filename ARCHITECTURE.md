@@ -15,32 +15,12 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
      -> persist + memory   (personality.py, memory.py)
 ```
 
-The Pandora text->OCEAN model (`trait_model.py`) is used only as a read-only readout
-(`readout.py`) -- never to encode experiences or compute the push.
-
 ## Representation
 - **Personality** (`personality.py`): `{"traits": {O,C,E,A,N in [-1,1]}, "experience_count"}`.
-- **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
+- **Experience** (`appraisal.py`): an appraisal vector --
   `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
-  -- the causal ingredients of change, not a trait-expression reading.
-
-## Push + update
-```
-salience = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
-pull     = M . appraisal                          # which traits move, signed (config.M)
-push[k]  = clamp(FORMATION_RATE * salience * pull[k])
-
-trait[k] <- clamp(trait[k] + push[k] * (1 - |trait[k]|))   # diminishing returns
-```
-Worked example (a vivid party, push_E ~ 0.3):
-`E: 0.00 -> 0.30 -> 0.51 -> 0.66 -> ...` -- each repetition adds less, bounded by 1.
-
-Because the push is signed, experiences can lower a trait too: the `M` neuroticism
-row `(-valence, -agency, -outcome, -threat_challenge, +intensity)` makes helpless
-terror raise N while fear faced with mastery lowers it. (See `acceptance_test.py`.)
-
-`FORMATION_RATE` is the responsiveness knob: ~0.3 per vivid experience is fast;
-lower it for slower, more gradual formation.
+  -- the causal ingredients of change, not a trait-expression reading. Used for the
+  deterministic fallback push when DeepSeek is unavailable.
 
 ## LLM push (DeepSeek) + heuristic fallback
 The primary push comes from DeepSeek (`llm_impact.py`): the model reads the experience
@@ -56,21 +36,35 @@ Copy `.env.example` to `.env` and set `DEEPSEEK_API_KEY`. If the key is missing,
 so there is no hard network dependency and the dependency-free `acceptance_test.py`
 path is unchanged.
 
-## Deterministic vs learned -- every component is replaceable
+## Fallback push + update
+```
+salience = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
+pull     = M . appraisal                          # which traits move, signed (config.M)
+push[k]  = clamp(FORMATION_RATE * salience * pull[k])
+
+trait[k] <- clamp(trait[k] + push[k] * (1 - |trait[k]|))   # diminishing returns (both paths)
+```
+Worked example (a vivid party, push_E ~ 0.3):
+`E: 0.00 -> 0.30 -> 0.51 -> 0.66 -> ...` -- each repetition adds less, bounded by 1.
+
+Because the push is signed, experiences can lower a trait too: the `M` neuroticism
+row `(-valence, -agency, -outcome, -threat_challenge, +intensity)` makes helpless
+terror raise N while fear faced with mastery lowers it. (See `acceptance_test.py`.)
+
+`FORMATION_RATE` and `LLM_FORMATION_RATE` are the responsiveness knobs: ~0.3 per vivid
+experience is fast; lower them for slower, more gradual formation.
+
+## Components -- each is replaceable
 | Component | Today | Later (same interface) |
 |---|---|---|
-| Encoder | MiniLM (frozen) | — |
+| Encoder | MiniLM (frozen), for recurrence | — |
 | Push source | DeepSeek LLM (primary), heuristic fallback | learned `appraisal -> push` |
-| Appraisal extractor | heuristic -> head trained on affect corpora | larger/fine-tuned head |
+| Fallback appraisal | zero-dependency heuristic lexicon | larger/fine-tuned extractor |
 | Push matrix `M` | theory rules | learned `appraisal -> push` |
-| Pandora OCEAN model | read-only readout | richer probe, still read-only |
 
-## Data (no longitudinal dataset required)
-- Appraisal head: existing cross-sectional affect/appraisal corpora (EmoBank VAD,
-  GoEmotions, appraisal-annotated event sets) via `bootstrap/`.
-- Pandora readout: `train_trait_model.py` (`text -> OCEAN`).
-- No `experience -> trait-change` labels exist anywhere, so `M` stays rules until
-  such data does.
+## Data
+No `experience -> trait-change` labels exist anywhere, so the fallback `M` stays
+theory-authored rules. The DeepSeek push needs no training data.
 
 ## Run
 ```
@@ -78,5 +72,4 @@ python acceptance_test.py                                 # dependency-free beha
 pip install -r requirements.txt                           # encoder + DeepSeek client
 cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
 python simulation.py                                      # full pipeline (encoder in the loop)
-python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
 ```

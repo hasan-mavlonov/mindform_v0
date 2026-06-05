@@ -10,11 +10,7 @@ experience means), never a trait-expression reading of the text. ``M`` (config.M
 is the theory-authored appraisal->trait projection, replaceable by a learned map.
 """
 
-from config import BASIS, M, FORMATION_RATE
-
-
-def clamp(value, minimum=-1.0, maximum=1.0):
-    return max(minimum, min(maximum, value))
+from config import BASIS, M, FORMATION_RATE, clamp
 
 
 def rule_pull(appraisal):

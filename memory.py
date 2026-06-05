@@ -1,4 +1,9 @@
-"""Persistent memory of experiences: text, embedding, appraisal, and push."""
+"""Persistent memory of experiences: text, embedding, appraisal, and push.
+
+Memories are cached in-process after the first read, so a turn that calls both
+recurrence() and create_memory() touches the disk once for reading plus one write,
+instead of re-parsing the whole file on every call.
+"""
 
 import json
 import os
@@ -10,23 +15,32 @@ from personality import read_traits
 
 MEMORY_FILE = "data/memories.json"
 
+_memories = None   # in-process cache; the running app is the only writer
+
 
 def load_memories():
-    if not os.path.exists(MEMORY_FILE):
-        save_memories([])
-        return []
-    with open(MEMORY_FILE, "r") as f:
-        return json.load(f)
+    """Return all memories, reading from disk only on the first call."""
+    global _memories
+    if _memories is None:
+        if os.path.exists(MEMORY_FILE):
+            with open(MEMORY_FILE, "r") as f:
+                _memories = json.load(f)
+        else:
+            _memories = []
+            save_memories(_memories)
+    return _memories
 
 
 def save_memories(memories):
+    global _memories
+    _memories = memories
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
     with open(MEMORY_FILE, "w") as f:
         json.dump(memories, f, indent=4)
 
 
 def create_memory(text, embedding, appraisal, push, personality_after):
-    """Append a new memory and return it."""
+    """Append a new memory (cache + disk) and return it."""
     emb = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
     memory = {
         "text": text,

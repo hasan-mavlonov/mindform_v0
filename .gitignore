@@ -21,5 +21,8 @@ env/
 # Model / data caches
 .cache/
 
+# Runtime state (personality + memories, recreated on each run)
+data/
+
 # Secrets / local environment (keep .env.example tracked)
 .env

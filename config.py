@@ -1,4 +1,4 @@
-"""Central configuration: trait basis, appraisal schema, prior matrix, constants.
+"""Central configuration: trait basis, prior matrix, constants, shared helpers.
 
 Everything tunable about MindForm lives here so the moving parts stay in one
 place and each can later be swapped for a learned component.
@@ -28,6 +28,12 @@ def _load_dotenv(path=".env"):
 
 _load_dotenv()
 
+
+def clamp(value, minimum=-1.0, maximum=1.0):
+    """Clamp into [minimum, maximum] -- defaults to the trait/push range [-1, 1]."""
+    return max(minimum, min(maximum, value))
+
+
 # --- Trait basis (a swappable coordinate system; default Big Five / OCEAN) ---
 BASIS = ["O", "C", "E", "A", "N"]
 BASIS_NAMES = {
@@ -38,22 +44,9 @@ BASIS_NAMES = {
     "N": "neuroticism",
 }
 
-# --- Appraisal schema: dim -> range.  "signed" = [-1, 1], "unit" = [0, 1]. ---
-APPRAISAL_SCHEMA = {
-    "valence": "signed",
-    "intensity": "unit",
-    "novelty": "unit",
-    "agency": "signed",
-    "social": "signed",
-    "outcome": "signed",
-    "self_relevance": "unit",
-    "threat_challenge": "signed",   # -1 = threat/loss, +1 = challenge/growth
-}
-APPRAISAL_DIMS = list(APPRAISAL_SCHEMA)
-
 # --- Appraisal -> trait prior matrix M (rows = BASIS, cols = appraisal dims). ---
-# Hand-authored from the personality-change literature. This is the single
-# basis-specific component; swap M to change the trait basis, learn M later.
+# Hand-authored from the personality-change literature. Drives the deterministic
+# fallback push (impact.py) when DeepSeek is unavailable; learn M later.
 # Outputs are clamped to [-1, 1], so rows need not be normalized.
 M = {
     "O": {"novelty": 0.6, "valence": 0.2, "threat_challenge": 0.3, "self_relevance": 0.1},
@@ -65,7 +58,7 @@ M = {
           "threat_challenge": -0.3, "intensity": 0.2},
 }
 
-# --- Formation rate ---
+# --- Formation rate (fallback heuristic path) ---
 # push = FORMATION_RATE * salience * (M . appraisal); updater.py then applies it
 # with diminishing returns (1 - |trait|). Tuned so a vivid social experience moves
 # extraversion by ~0.3 on the first occurrence (0.00 -> 0.30 -> 0.51 -> ...).
