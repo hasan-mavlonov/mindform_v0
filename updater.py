@@ -12,9 +12,7 @@ the trait asymptotes toward the extreme instead of jumping past it.
 The push is signed, so experiences can lower a trait as well as raise it.
 """
 
-
-def clamp(value, minimum=-1.0, maximum=1.0):
-    return max(minimum, min(maximum, value))
+from config import clamp
 
 
 def update_personality(personality, push):

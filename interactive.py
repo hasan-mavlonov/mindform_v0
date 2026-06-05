@@ -9,13 +9,13 @@ Commands:
   /show   -> show current traits
 """
 
-from personality import load_personality, save_personality, default_personality
+from personality import (load_personality, save_personality, default_personality,
+                         read_traits)
 from encoder import encode_text
 from appraisal import appraise
 from llm_impact import push_from_text
 from updater import update_personality
 from memory import create_memory, recurrence
-from personality import read_traits
 
 
 def print_traits(personality):

@@ -24,9 +24,9 @@ import json
 import logging
 import os
 
-from config import BASIS, LLM_FORMATION_RATE, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
+from config import BASIS, LLM_FORMATION_RATE, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL, clamp
 from appraisal import appraise
-from impact import impact, clamp
+from impact import impact
 
 log = logging.getLogger("mindform.llm")
 

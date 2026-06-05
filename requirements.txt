@@ -1,6 +1,5 @@
 # Core dependencies for MindForm.
-torch>=2.0
-sentence-transformers>=2.2.0
-datasets>=2.0.0          # Pandora readout training + affect-corpus loading (bootstrap)
-numpy>=1.21              # memory.recurrence (cosine similarity)
-openai>=1.0             # DeepSeek (OpenAI-compatible) LLM push; heuristic fallback works without it
+sentence-transformers>=2.2.0   # MiniLM encoder for recurrence detection
+torch>=2.0                     # backs the encoder (pulled in by sentence-transformers)
+numpy>=1.21                    # memory.recurrence (cosine similarity)
+openai>=1.0                    # DeepSeek (OpenAI-compatible) LLM push; heuristic fallback works without it
