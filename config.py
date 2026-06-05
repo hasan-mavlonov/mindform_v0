@@ -4,6 +4,30 @@ Everything tunable about MindForm lives here so the moving parts stay in one
 place and each can later be swapped for a learned component.
 """
 
+import os
+
+
+def _load_dotenv(path=".env"):
+    """Minimal .env loader (stdlib only): KEY=VALUE lines -> os.environ.
+
+    Real shell environment variables win (we only fill in defaults), and a missing
+    file is fine -- this keeps the no-network/no-secret path dependency-free. Copy
+    .env.example to .env to configure. (For richer parsing, ``pip install
+    python-dotenv`` and this stays compatible.)
+    """
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 # --- Trait basis (a swappable coordinate system; default Big Five / OCEAN) ---
 BASIS = ["O", "C", "E", "A", "N"]
 BASIS_NAMES = {
@@ -47,6 +71,17 @@ M = {
 # extraversion by ~0.3 on the first occurrence (0.00 -> 0.30 -> 0.51 -> ...).
 # Lower it for slower, more gradual personality formation.
 FORMATION_RATE = 1.3
+
+# --- LLM push (DeepSeek, OpenAI-compatible) ---
+# llm_impact.py asks DeepSeek for a signed OCEAN delta in [-1, 1] per trait, then
+# push = clamp(LLM_FORMATION_RATE * delta); updater.py applies it with diminishing
+# returns. A max-strength delta (1.0) thus nudges a neutral trait by the rate (~0.3),
+# never all the way in one experience -- formation builds over many experiences.
+# Falls back to the heuristic impact() when DeepSeek is unavailable. Secrets
+# (DEEPSEEK_API_KEY) live in .env -- copy .env.example. Env vars override these.
+LLM_FORMATION_RATE = float(os.environ.get("LLM_FORMATION_RATE", "0.3"))
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience

@@ -20,3 +20,6 @@ env/
 
 # Model / data caches
 .cache/
+
+# Secrets / local environment (keep .env.example tracked)
+.env
