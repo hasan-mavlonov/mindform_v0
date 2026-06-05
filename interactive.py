@@ -12,7 +12,7 @@ Commands:
 from personality import load_personality, save_personality, default_personality
 from encoder import encode_text
 from appraisal import appraise
-from impact import impact
+from llm_impact import push_from_text
 from updater import update_personality
 from memory import create_memory, recurrence
 from personality import read_traits
@@ -57,7 +57,7 @@ def run():
         appraisal = appraise(text)
         seen = recurrence(embedding)
 
-        push = impact(appraisal)
+        push, source, reasoning = push_from_text(text, appraisal)
         personality = update_personality(personality, push)
 
         create_memory(text, embedding, appraisal, push, personality)
@@ -65,6 +65,7 @@ def run():
 
         print("\n--- RESULT ---")
         print(f"Seen before: {seen}")
+        print(f"Push via: {source}" + (f"  --  {reasoning}" if reasoning else ""))
 
         print("\nPush:")
         for k, v in push.items():
