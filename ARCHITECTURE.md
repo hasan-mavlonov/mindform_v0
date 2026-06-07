@@ -15,9 +15,6 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
      -> persist + memory   (personality.py, memory.py)
 ```
 
-The Pandora text->OCEAN model (`trait_model.py`) is used only as a read-only readout
-(`readout.py`) -- never to encode experiences or compute the push.
-
 ## Representation
 - **Personality** (`personality.py`): `{"traits": {O,C,E,A,N in [-1,1]}, "experience_count"}`.
 - **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
@@ -63,12 +60,10 @@ path is unchanged.
 | Push source | DeepSeek LLM (primary), heuristic fallback | learned `appraisal -> push` |
 | Appraisal extractor | heuristic -> head trained on affect corpora | larger/fine-tuned head |
 | Push matrix `M` | theory rules | learned `appraisal -> push` |
-| Pandora OCEAN model | read-only readout | richer probe, still read-only |
 
 ## Data (no longitudinal dataset required)
 - Appraisal head: existing cross-sectional affect/appraisal corpora (EmoBank VAD,
   GoEmotions, appraisal-annotated event sets) via `bootstrap/`.
-- Pandora readout: `train_trait_model.py` (`text -> OCEAN`).
 - No `experience -> trait-change` labels exist anywhere, so `M` stays rules until
   such data does.
 

@@ -6,8 +6,6 @@
          -> diminishing-returns update of the five traits (updater.py)
          -> memory             (memory.py)
 
-The Pandora text->OCEAN model is used only as a read-only readout (readout.py).
-
 Run with: python simulation.py
 """
 

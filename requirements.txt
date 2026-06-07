@@ -1,6 +1,6 @@
 # Core dependencies for MindForm.
 torch>=2.0
 sentence-transformers>=2.2.0
-datasets>=2.0.0          # Pandora readout training + affect-corpus loading (bootstrap)
+datasets>=2.0.0          # affect-corpus loading for the appraisal head (bootstrap)
 numpy>=1.21              # memory.recurrence (cosine similarity)
 openai>=1.0             # DeepSeek (OpenAI-compatible) LLM push; heuristic fallback works without it
