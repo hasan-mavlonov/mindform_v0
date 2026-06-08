@@ -10,6 +10,11 @@ the trait asymptotes toward the extreme instead of jumping past it.
         0.00 -> 0.30 -> 0.51 -> 0.66 -> 0.76 -> ...
 
 The push is signed, so experiences can lower a trait as well as raise it.
+
+Identity and temperament ride through untouched here. The temperament dynamics --
+pulling the current trait back toward its baseline ``x += tau*(mu - x)`` and the
+slow baseline drift ``mu += eta*(x - mu)`` -- are Slice 2; today this is the pure
+experience-forms step.
 """
 
 
@@ -24,6 +29,7 @@ def update_personality(personality, push):
         traits[dim] = clamp(value + push.get(dim, 0.0) * (1 - abs(value)))
 
     return {
+        **personality,
         "traits": traits,
         "experience_count": personality.get("experience_count", 0) + 1,
     }

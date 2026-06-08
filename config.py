@@ -85,3 +85,12 @@ DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.co
 
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
+
+# --- Temperament (genesis baseline) ---
+# A character is born (temperament.genesis) with a per-trait OCEAN baseline `mu`
+# in [-1, 1] and a per-trait stickiness `tau` in [0, 1]. The current traits start
+# AT the baseline (x = mu). DEFAULT_TAU is used when a seed leaves stickiness
+# unspecified (and for blank / legacy characters). High tau = resilient (snaps
+# back to baseline); low tau = easily reshaped. The baseline-as-attractor and slow
+# baseline-drift dynamics that consume tau are added in updater.py (Slice 2).
+DEFAULT_TAU = 0.30
