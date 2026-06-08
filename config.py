@@ -109,3 +109,16 @@ IDENTITY_FIELDS = [
     ("religion", "Religion raised in"),
     ("family", "Family background"),
 ]
+
+# --- Trait questionnaire (manual character creation) ---
+# One plain-language question per OCEAN trait: (key, name, low-pole, high-pole).
+# The answer is a level 1-5 that maps to a baseline mu via TRAIT_LEVELS, so the
+# author sets the temperament directly instead of having it inferred from text.
+TRAIT_QUESTIONS = [
+    ("O", "Openness",          "practical, conventional", "curious, imaginative"),
+    ("C", "Conscientiousness", "spontaneous, easygoing",  "disciplined, organized"),
+    ("E", "Extraversion",      "reserved, private",       "outgoing, energetic"),
+    ("A", "Agreeableness",     "blunt, competitive",      "warm, cooperative"),
+    ("N", "Neuroticism",       "calm, resilient",         "sensitive, easily stressed"),
+]
+TRAIT_LEVELS = {1: -0.8, 2: -0.4, 3: 0.0, 4: 0.4, 5: 0.8}

@@ -214,3 +214,19 @@ def create_character(fields, overrides=None):
     seed, source = seed_from_bio(_compose_bio(identity, background))
     seed["identity"] = identity      # explicit fields win over anything guessed
     return _finalize(seed, overrides), source, seed.get("reasoning", "")
+
+
+def build_character(identity, mu, tau=None):
+    """Build a character from an explicit identity + an explicitly chosen OCEAN baseline.
+
+    No seeding / LLM -- the caller (e.g. the creation questionnaire) chose ``mu``
+    directly. ``tau`` defaults to ``DEFAULT_TAU`` per trait. Traits are born at the
+    baseline (``x = mu``). Returns ``(personality, "manual", "")``.
+    """
+    seed = {
+        "identity": dict(identity),
+        "mu": {d: float(mu.get(d, 0.0)) for d in BASIS},
+        "tau": dict(tau) if tau else {d: DEFAULT_TAU for d in BASIS},
+        "reasoning": "",
+    }
+    return _finalize(seed), "manual", ""
