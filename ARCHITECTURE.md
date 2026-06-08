@@ -1,12 +1,16 @@
 # MindForm Architecture
 
 ## What it does
-A piece of text (an experience) changes a personality made of five OCEAN traits,
-each in **[-1, 1]**. Experiences push the traits, and the push is applied with
-**diminishing returns**: a trait moves fast while near 0 and ever more slowly as it
-approaches +/-1.
+A character is **born** from a short biography (genesis): it gets immutable identity
+facts plus a temperamental OCEAN baseline. Then a piece of text (an experience)
+changes its personality -- five OCEAN traits, each in **[-1, 1]** -- by pushing the
+traits with **diminishing returns**: a trait moves fast while near 0 and ever more
+slowly as it approaches +/-1.
 
 ```
+bio  -> genesis (temperament.py): identity + OCEAN baseline mu + stickiness tau,
+        born at baseline (traits x = mu)
+
 text -> MiniLM embedding (encoder.py)                  # recurrence + memory
      -> signed push:
           DeepSeek LLM  (llm_impact.py): text -> OCEAN delta x LLM_FORMATION_RATE  [primary]
@@ -16,10 +20,34 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
 ```
 
 ## Representation
-- **Personality** (`personality.py`): `{"traits": {O,C,E,A,N in [-1,1]}, "experience_count"}`.
+- **Personality** (`personality.py`): `{"identity", "temperament": {"mu","tau"}, "traits": {O,C,E,A,N in [-1,1]}, "experience_count"}`.
+- **Temperament** (`temperament.py`): per-trait baseline `mu in [-1,1]` and stickiness
+  `tau in [0,1]`, seeded at genesis; `identity` holds immutable facts (name, origin,
+  religion-raised, ...). The current `traits` are born at the baseline (x = mu).
 - **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
   `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
   -- the causal ingredients of change, not a trait-expression reading.
+
+## Temperament & genesis (the baseline you're born with)
+A character is born from a biography via `temperament.genesis(bio)`, which seeds:
+- `identity` -- immutable facts (name, origin, religion-raised, ...): the lens, never drifts.
+- `temperament.mu` -- the per-trait OCEAN **baseline** (the biological set-point).
+- `temperament.tau` -- per-trait **stickiness** in [0, 1]: how hard biology anchors the trait.
+
+The current `traits` start AT the baseline (`x = mu`), so two different bios yield two
+distinguishable characters from birth instead of identical blank slates. Genesis uses
+DeepSeek with the same heuristic fallback discipline as the push, so it runs with no network.
+
+**Slice 1 (today)** only *seeds* the baseline. **Slice 2** turns on the temperament
+dynamics in the update -- the current trait pulled back toward its baseline, and the
+baseline drifting slowly after a sustained shift:
+```
+x[k]  <- x[k] + tau[k] * (mu[k] - x[k])   # prior pulls current toward baseline
+mu[k] <- mu[k] + eta    * (x[k] - mu[k])  # baseline drifts slowly (eta << tau)
+```
+With the pull active, repeated experience settles a trait at a fixed point *between* its
+baseline and the extreme -- so identical lives with different temperaments end up as
+different stable people. (Bayesian point-estimate now; per-trait distributions later.)
 
 ## Push + update
 ```
@@ -60,6 +88,8 @@ path is unchanged.
 | Push source | DeepSeek LLM (primary), heuristic fallback | learned `appraisal -> push` |
 | Appraisal extractor | heuristic -> head trained on affect corpora | larger/fine-tuned head |
 | Push matrix `M` | theory rules | learned `appraisal -> push` |
+| Temperament seed | DeepSeek genesis (heuristic fallback) | learned `bio -> (mu, tau)` |
+| Temperament math | point estimate (mu, tau) | per-trait distributions (mu, sigma) |
 
 ## Data (no longitudinal dataset required)
 - Appraisal head: existing cross-sectional affect/appraisal corpora (EmoBank VAD,
@@ -69,9 +99,11 @@ path is unchanged.
 
 ## Run
 ```
-python acceptance_test.py                                 # dependency-free behaviour check
+python acceptance_test.py                                 # dependency-free: experience -> trait change
+python genesis_test.py                                    # dependency-free: bio -> distinct temperament
 pip install -r requirements.txt                           # encoder + DeepSeek client
 cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
+python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character
 python simulation.py                                      # full pipeline (encoder in the loop)
 python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
 ```
