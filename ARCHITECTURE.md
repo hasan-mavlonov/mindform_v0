@@ -38,6 +38,18 @@ The current `traits` start AT the baseline (`x = mu`), so two different bios yie
 distinguishable characters from birth instead of identical blank slates. Genesis uses
 DeepSeek with the same heuristic fallback discipline as the push, so it runs with no network.
 
+Three authoring paths build a character:
+- `genesis(bio)` -- a one-line free-text biography; LLM/heuristic seeds `mu`/`tau`.
+- `create_character(fields)` -- explicit identity fields + a free-text `background` that seeds `mu`/`tau`.
+- `build_character(identity, mu)` -- explicit identity + an explicitly chosen OCEAN baseline,
+  no LLM. This backs the short **questionnaire** the interactive shell uses
+  (`config.TRAIT_QUESTIONS`: one 1-5 question per trait -> baseline `mu`).
+
+Characters live in a roster (`data/characters/<slug>.json`, keyed by name; per-character
+memories alongside as `<slug>.memories.json`). `interactive.py` opens with **Use existing**
+(lists the roster, pick one) or **Create new** (identity + trait questionnaire), then drops
+into the talk loop, autosaving the active character each turn.
+
 **Slice 1 (today)** only *seeds* the baseline. **Slice 2** turns on the temperament
 dynamics in the update -- the current trait pulled back toward its baseline, and the
 baseline drifting slowly after a sustained shift:
@@ -103,7 +115,8 @@ python acceptance_test.py                                 # dependency-free: exp
 python genesis_test.py                                    # dependency-free: bio -> distinct temperament
 pip install -r requirements.txt                           # encoder + DeepSeek client
 cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
-python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character
+python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character (CLI)
+python interactive.py                                     # roster menu (use existing / create new) + talk
 python simulation.py                                      # full pipeline (encoder in the loop)
 python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
 ```

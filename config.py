@@ -94,3 +94,31 @@ RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experie
 # back to baseline); low tau = easily reshaped. The baseline-as-attractor and slow
 # baseline-drift dynamics that consume tau are added in updater.py (Slice 2).
 DEFAULT_TAU = 0.30
+
+# --- Identity (immutable facts collected when a character is created) ---
+# (field_key, prompt_label), in the order the creation form asks for them. These
+# are stored verbatim in personality["identity"] and never drift. The separate
+# free-text "background" blurb (not listed here) is what seeds temperament mu/tau.
+IDENTITY_FIELDS = [
+    ("name", "Name"),
+    ("age", "Age"),
+    ("gender", "Gender"),
+    ("origin", "Where from (city / country)"),
+    ("culture", "Culture / ethnicity"),
+    ("language", "Native language"),
+    ("religion", "Religion raised in"),
+    ("family", "Family background"),
+]
+
+# --- Trait questionnaire (manual character creation) ---
+# One plain-language question per OCEAN trait: (key, name, low-pole, high-pole).
+# The answer is a level 1-5 that maps to a baseline mu via TRAIT_LEVELS, so the
+# author sets the temperament directly instead of having it inferred from text.
+TRAIT_QUESTIONS = [
+    ("O", "Openness",          "practical, conventional", "curious, imaginative"),
+    ("C", "Conscientiousness", "spontaneous, easygoing",  "disciplined, organized"),
+    ("E", "Extraversion",      "reserved, private",       "outgoing, energetic"),
+    ("A", "Agreeableness",     "blunt, competitive",      "warm, cooperative"),
+    ("N", "Neuroticism",       "calm, resilient",         "sensitive, easily stressed"),
+]
+TRAIT_LEVELS = {1: -0.8, 2: -0.4, 3: 0.0, 4: 0.4, 5: 0.8}
