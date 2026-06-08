@@ -94,3 +94,18 @@ RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experie
 # back to baseline); low tau = easily reshaped. The baseline-as-attractor and slow
 # baseline-drift dynamics that consume tau are added in updater.py (Slice 2).
 DEFAULT_TAU = 0.30
+
+# --- Identity (immutable facts collected when a character is created) ---
+# (field_key, prompt_label), in the order the creation form asks for them. These
+# are stored verbatim in personality["identity"] and never drift. The separate
+# free-text "background" blurb (not listed here) is what seeds temperament mu/tau.
+IDENTITY_FIELDS = [
+    ("name", "Name"),
+    ("age", "Age"),
+    ("gender", "Gender"),
+    ("origin", "Where from (city / country)"),
+    ("culture", "Culture / ethnicity"),
+    ("language", "Native language"),
+    ("religion", "Religion raised in"),
+    ("family", "Family background"),
+]

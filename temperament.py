@@ -158,15 +158,8 @@ def seed_from_bio(bio):
         return _heuristic_seed(bio), "heuristic"
 
 
-def genesis(bio, overrides=None):
-    """Birth a character from a biography.
-
-    Returns ``(personality, source, reasoning)``. The current traits are born at
-    the baseline (``x = mu``); pass ``overrides={"mu": {...}, "tau": {...},
-    "identity": {...}}`` to hand-edit the seed before it is committed -- the hybrid
-    authoring path.
-    """
-    seed, source = seed_from_bio(bio)
+def _finalize(seed, overrides=None):
+    """Clamp a seed and build the character dict (traits born at baseline x = mu)."""
     if overrides:
         for key in ("identity", "mu", "tau"):
             if key in overrides:
@@ -174,11 +167,50 @@ def genesis(bio, overrides=None):
 
     mu = {d: _clamp(float(seed["mu"].get(d, 0.0)), -1.0, 1.0) for d in BASIS}
     tau = {d: _clamp(float(seed["tau"].get(d, DEFAULT_TAU)), 0.0, 1.0) for d in BASIS}
-
-    personality = {
+    return {
         "identity": dict(seed.get("identity") or {}),
         "temperament": {"mu": mu, "tau": tau},
         "traits": dict(mu),       # born at baseline: x = mu
         "experience_count": 0,
     }
-    return personality, source, seed.get("reasoning", "")
+
+
+def genesis(bio, overrides=None):
+    """Birth a character from a free-text biography.
+
+    Returns ``(personality, source, reasoning)``; the current traits are born at
+    the baseline (``x = mu``). Pass ``overrides={"mu": {...}, "tau": {...},
+    "identity": {...}}`` to hand-edit the seed before it commits (hybrid path).
+    """
+    seed, source = seed_from_bio(bio)
+    return _finalize(seed, overrides), source, seed.get("reasoning", "")
+
+
+def _compose_bio(identity, background):
+    """Assemble a seeding bio from explicit identity fields + a background blurb.
+
+    The identity facts give the model context; the free-text background carries
+    the temperament cues (the heuristic lexicon scans it for trait words).
+    """
+    facts = ", ".join(f"{key}: {value}" for key, value in identity.items() if value)
+    if facts and background:
+        return f"{facts}. {background}"
+    return background or facts
+
+
+def create_character(fields, overrides=None):
+    """Create a character from explicit identity fields + an optional background.
+
+    ``fields`` is a dict of immutable identity values (name, age, origin, religion,
+    ...) plus an optional ``"background"`` free-text blurb. The identity is stored
+    verbatim and is authoritative; the OCEAN baseline ``mu`` and stickiness ``tau``
+    are seeded from the background (LLM, heuristic fallback) with the identity facts
+    as context. Returns ``(personality, source, reasoning)``.
+    """
+    identity = {key: value for key, value in fields.items()
+                if key != "background" and value not in (None, "")}
+    background = (fields.get("background") or "").strip()
+
+    seed, source = seed_from_bio(_compose_bio(identity, background))
+    seed["identity"] = identity      # explicit fields win over anything guessed
+    return _finalize(seed, overrides), source, seed.get("reasoning", "")

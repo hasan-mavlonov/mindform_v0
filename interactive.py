@@ -1,20 +1,25 @@
 """
 MindForm Interactive Shell
 
-Type experiences and watch personality evolve in real time.
+Start a new character (guided fields) or continue an existing one, then type
+experiences and watch the personality evolve.
 
 Commands:
-  /genesis <bio>  -> birth a character from a short biography (seeds temperament)
+  /new            -> create a new character via the field form
+  /genesis <bio>  -> create a new character from a one-line biography
   /show           -> show identity, current traits, and temperament baseline
   /reset          -> reset to a blank, neutral character
   /exit           -> quit
 """
 
+import os
+
+from config import IDENTITY_FIELDS
 from personality import (
     load_personality, save_personality, default_personality,
-    read_traits, read_temperament,
+    read_traits, read_temperament, PERSONALITY_FILE,
 )
-from temperament import genesis
+from temperament import genesis, create_character
 from encoder import encode_text
 from appraisal import appraise
 from llm_impact import push_from_text
@@ -38,11 +43,47 @@ def print_state(personality):
     print()
 
 
-def run():
-    personality = load_personality()
+def prompt_fields():
+    """Collect immutable identity fields + a free-text background for temperament."""
+    print("\n-- New character (press Enter to skip a field) --")
+    fields = {}
+    for key, label in IDENTITY_FIELDS:
+        value = input(f"  {label}: ").strip()
+        if value:
+            fields[key] = value
+    background = input("  Background (a few words about their nature): ").strip()
+    if background:
+        fields["background"] = background
+    return fields
 
-    print("\n=== MindForm Interactive Mode ===")
-    print("Type experiences, or: /genesis <bio>  /show  /reset  /exit\n")
+
+def create_new():
+    personality, source, reasoning = create_character(prompt_fields())
+    save_personality(personality)
+    print(f"\nCharacter created (temperament via {source})."
+          + (f"  --  {reasoning}" if reasoning else ""))
+    print_state(personality)
+    return personality
+
+
+def start():
+    """Startup menu: continue the saved character, or create a new one."""
+    print("\n=== MindForm ===")
+    if os.path.exists(PERSONALITY_FILE):
+        saved = load_personality()
+        name = (saved.get("identity") or {}).get("name") or "unnamed character"
+        print("  1) New character")
+        print(f"  2) Continue: {name}")
+        if input("> ").strip() == "2":
+            print_state(saved)
+            return saved
+    return create_new()
+
+
+def run():
+    personality = start()
+
+    print("Type experiences, or: /new  /genesis <bio>  /show  /reset  /exit\n")
 
     while True:
         text = input(">>> ").strip()
@@ -55,6 +96,10 @@ def run():
 
         if text == "/show":
             print_state(personality)
+            continue
+
+        if text == "/new":
+            personality = create_new()
             continue
 
         if text.startswith("/genesis"):

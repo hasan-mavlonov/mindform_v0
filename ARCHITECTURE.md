@@ -38,6 +38,15 @@ The current `traits` start AT the baseline (`x = mu`), so two different bios yie
 distinguishable characters from birth instead of identical blank slates. Genesis uses
 DeepSeek with the same heuristic fallback discipline as the push, so it runs with no network.
 
+Two authoring paths feed the same seeder:
+- `genesis(bio)` -- a one-line free-text biography.
+- `create_character(fields)` -- explicit immutable identity fields (`config.IDENTITY_FIELDS`:
+  name, age, origin, religion, ...) stored verbatim, plus a free-text `background` blurb that
+  seeds `mu`/`tau`. This is the field-form path the interactive shell uses.
+
+`interactive.py` opens with a **New character / Continue** menu: create from the field form,
+or load the saved character and pick up where it left off.
+
 **Slice 1 (today)** only *seeds* the baseline. **Slice 2** turns on the temperament
 dynamics in the update -- the current trait pulled back toward its baseline, and the
 baseline drifting slowly after a sustained shift:
@@ -103,7 +112,8 @@ python acceptance_test.py                                 # dependency-free: exp
 python genesis_test.py                                    # dependency-free: bio -> distinct temperament
 pip install -r requirements.txt                           # encoder + DeepSeek client
 cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
-python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character
+python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character (CLI)
+python interactive.py                                     # new/continue menu + live shell
 python simulation.py                                      # full pipeline (encoder in the loop)
 python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
 ```
