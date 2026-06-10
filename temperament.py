@@ -11,17 +11,19 @@ This is Slice 1: it only *seeds* the baseline. The baseline-as-attractor dynamic
 -- the current trait pulled back toward ``mu``, and ``mu`` drifting slowly after a
 sustained ``x`` -- are applied in updater.py (Slice 2).
 
-The primary seed comes from DeepSeek (OpenAI-compatible). If no DEEPSEEK_API_KEY
-is set, the ``openai`` package is missing, the network fails, or the reply is
-unparseable, ``seed_from_bio`` falls back to a deterministic lexical heuristic, so
-genesis never hard-depends on the network -- the same discipline as llm_impact.py.
+The primary seed comes from an OpenAI-compatible LLM (Google's Gemma 4 by default).
+If no API key is set, the ``openai`` package is missing, the network fails, or the
+reply is unparseable, ``seed_from_bio`` falls back to a deterministic lexical
+heuristic, so genesis never hard-depends on the network -- the same discipline as
+llm_impact.py.
 """
 
-import json
 import logging
-import os
 
-from config import BASIS, DEFAULT_TAU, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
+from config import (
+    BASIS, DEFAULT_TAU, LLM_LABEL, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY,
+    parse_json_object,
+)
 
 log = logging.getLogger("mindform.genesis")
 
@@ -115,30 +117,28 @@ def _heuristic_seed(bio):
 
 
 def _llm_seed(bio):
-    """Ask DeepSeek to seed identity + mu + tau from the biography.
+    """Ask the LLM (Gemma 4 by default) to seed identity + mu + tau from the bio.
 
     Raises on any failure (missing key/package, network, malformed JSON, missing
     or non-numeric trait) so ``seed_from_bio`` can fall back to the heuristic.
     """
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set")
+    if not LLM_API_KEY:
+        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
 
     from openai import OpenAI  # lazy: the heuristic fallback works without this package
 
-    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     completion = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": GENESIS_PROMPT},
             {"role": "user", "content": f"Biography:\n{bio}"},
         ],
-        response_format={"type": "json_object"},
         temperature=0.3,
         max_tokens=600,
         timeout=30,
     )
-    data = json.loads(completion.choices[0].message.content)
+    data = parse_json_object(completion.choices[0].message.content)
     mu = {d: float(data["mu"][d]) for d in BASIS}      # KeyError / ValueError -> fallback
     tau = {d: float(data["tau"][d]) for d in BASIS}
     return {
@@ -152,9 +152,9 @@ def _llm_seed(bio):
 def seed_from_bio(bio):
     """Best-available seed for a biography. Returns ``(seed, source)``."""
     try:
-        return _llm_seed(bio), "deepseek"
+        return _llm_seed(bio), LLM_LABEL
     except Exception as exc:  # any failure -> deterministic heuristic
-        log.info("DeepSeek genesis unavailable (%s); using heuristic seed", exc)
+        log.info("LLM genesis unavailable (%s); using heuristic seed", exc)
         return _heuristic_seed(bio), "heuristic"
 
 

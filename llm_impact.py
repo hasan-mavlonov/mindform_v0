@@ -1,30 +1,32 @@
-"""Experience text -> signed per-trait push via DeepSeek, with heuristic fallback.
+"""Experience text -> signed per-trait push via an LLM, with heuristic fallback.
 
-This is the LLM-primary path for personality formation. DeepSeek (OpenAI-compatible,
-cheap, reachable from mainland China) reads the experience and returns a signed OCEAN
-*delta* in [-1, 1] per trait -- the directional pressure of a SINGLE occurrence of the
-experience. We scale that delta by ``LLM_FORMATION_RATE`` to get the push that
-``updater.py`` then applies with diminishing returns ``(1 - |trait|)``. The model
-judges only the experience's meaning, never a trait-expression reading of the author
-(formation, not detection).
+This is the LLM-primary path for personality formation. An OpenAI-compatible chat
+model -- Google's **Gemma 4** through the Gemini API by default -- reads the
+experience and returns a signed OCEAN *delta* in [-1, 1] per trait: the directional
+pressure of a SINGLE occurrence of the experience. We scale that delta by
+``LLM_FORMATION_RATE`` to get the push that ``updater.py`` then applies with
+diminishing returns ``(1 - |trait|)``. The model judges only the experience's
+meaning, never a trait-expression reading of the author (formation, not detection).
 
 Repetition is NOT baked into the delta: the engine accumulates repeated experiences
 itself (the user logs many events) and the diminishing-returns update handles the
 asymptote, so the prompt asks for the effect of one occurrence.
 
-If DeepSeek is unavailable -- no ``DEEPSEEK_API_KEY``, the ``openai`` package is not
-installed, a network error, or an unparseable reply -- ``push_from_text`` falls back
-to the deterministic heuristic ``impact(appraise(text))``. The engine therefore always
-produces a push and never hard-depends on the network.
+If the LLM is unavailable -- no API key (``GEMINI_API_KEY``), the ``openai`` package
+is not installed, a network error, or an unparseable reply -- ``push_from_text``
+falls back to the deterministic heuristic ``impact(appraise(text))``. The engine
+therefore always produces a push and never hard-depends on the network.
 
-Configure by copying ``.env.example`` to ``.env`` and setting ``DEEPSEEK_API_KEY``.
+Configure by copying ``.env.example`` to ``.env`` and setting ``GEMINI_API_KEY``
+(or point ``LLM_BASE_URL`` / ``LLM_MODEL`` at any OpenAI-compatible provider).
 """
 
-import json
 import logging
-import os
 
-from config import BASIS, LLM_FORMATION_RATE, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
+from config import (
+    BASIS, LLM_FORMATION_RATE, LLM_LABEL, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY,
+    parse_json_object,
+)
 from appraisal import appraise
 from impact import impact, clamp
 
@@ -103,32 +105,31 @@ Return ONLY valid JSON, with no markdown and no extra text, in exactly this form
 """
 
 
-def _deepseek_delta(text):
-    """Ask DeepSeek for the signed OCEAN delta of one occurrence of ``text``.
+def _llm_delta(text):
+    """Ask the LLM for the signed OCEAN delta of one occurrence of ``text``.
 
+    Uses the configured OpenAI-compatible provider (Google Gemma 4 by default).
     Returns ``{O, C, E, A, N: float, "reasoning": str}``. Raises on any failure
     (missing key/package, network error, malformed JSON, missing/non-numeric
     trait) so ``push_from_text`` can fall back to the heuristic.
     """
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set")
+    if not LLM_API_KEY:
+        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
 
     from openai import OpenAI  # lazy: the heuristic fallback works without this package
 
-    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     completion = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Experience:\n{text}"},
         ],
-        response_format={"type": "json_object"},
         temperature=0.2,
         max_tokens=400,
         timeout=30,
     )
-    data = json.loads(completion.choices[0].message.content)
+    data = parse_json_object(completion.choices[0].message.content)
     delta = {dim: float(data[dim]) for dim in BASIS}  # KeyError / ValueError -> fallback
     delta["reasoning"] = str(data.get("reasoning", ""))
     return delta
@@ -137,17 +138,18 @@ def _deepseek_delta(text):
 def push_from_text(text, appraisal=None):
     """Best-available signed per-trait push for an experience.
 
-    Tries DeepSeek first (``text -> OCEAN delta -> push = clamp(rate * delta)``);
+    Tries the LLM first (``text -> OCEAN delta -> push = clamp(rate * delta)``);
     on any failure falls back to the deterministic heuristic. Returns
-    ``(push, source, reasoning)`` where ``source`` is ``"deepseek"`` or
-    ``"heuristic"`` and ``reasoning`` is the model's note (empty on fallback).
+    ``(push, source, reasoning)`` where ``source`` is the provider label (e.g.
+    ``"gemma"``) or ``"heuristic"``, and ``reasoning`` is the model's note
+    (empty on fallback).
     """
     try:
-        delta = _deepseek_delta(text)
+        delta = _llm_delta(text)
         push = {dim: clamp(LLM_FORMATION_RATE * delta[dim]) for dim in BASIS}
-        return push, "deepseek", delta["reasoning"]
+        return push, LLM_LABEL, delta["reasoning"]
     except Exception as exc:  # any failure -> graceful deterministic fallback
-        log.info("DeepSeek push unavailable (%s); using heuristic fallback", exc)
+        log.info("LLM push unavailable (%s); using heuristic fallback", exc)
         if appraisal is None:
             appraisal = appraise(text)
         return impact(appraisal), "heuristic", ""
