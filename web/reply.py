@@ -15,9 +15,8 @@ So the reply works fully offline and never hard-depends on the network.
 """
 
 import logging
-import os
 
-from config import BASIS, BASIS_NAMES, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
+from config import BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY
 
 log = logging.getLogger("mindform.web.reply")
 
@@ -49,21 +48,23 @@ def _describe_identity(personality):
     return f"\nWho you are: {facts}" if facts else ""
 
 
-def _deepseek_reply(personality, user_text):
-    """Ask DeepSeek for an in-character line. Raises on any failure -> fallback."""
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set")
+def _llm_reply(personality, user_text):
+    """Ask the LLM (Gemma 4 by default) for an in-character line.
+
+    Raises on any failure so ``generate_reply`` falls back to the rule-based voice.
+    """
+    if not LLM_API_KEY:
+        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
 
     from openai import OpenAI  # lazy: the rule-based fallback works without this
 
-    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     system = _REPLY_PROMPT.format(
         traits=_describe_traits(personality),
         identity=_describe_identity(personality),
     )
     completion = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user_text},
@@ -147,7 +148,7 @@ def _rule_based_reply(personality, user_text):
 def generate_reply(personality, user_text):
     """Best-available in-character reply. Never raises; never touches traits."""
     try:
-        return _deepseek_reply(personality, user_text)
+        return _llm_reply(personality, user_text)
     except Exception as exc:
-        log.info("DeepSeek reply unavailable (%s); using rule-based voice", exc)
+        log.info("LLM reply unavailable (%s); using rule-based voice", exc)
         return _rule_based_reply(personality, user_text)

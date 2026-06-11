@@ -4,7 +4,9 @@ Everything tunable about MindForm lives here so the moving parts stay in one
 place and each can later be swapped for a learned component.
 """
 
+import json
 import os
+import re
 
 
 def _load_dotenv(path=".env"):
@@ -72,16 +74,72 @@ M = {
 # Lower it for slower, more gradual personality formation.
 FORMATION_RATE = 1.3
 
-# --- LLM push (DeepSeek, OpenAI-compatible) ---
-# llm_impact.py asks DeepSeek for a signed OCEAN delta in [-1, 1] per trait, then
-# push = clamp(LLM_FORMATION_RATE * delta); updater.py applies it with diminishing
-# returns. A max-strength delta (1.0) thus nudges a neutral trait by the rate (~0.3),
-# never all the way in one experience -- formation builds over many experiences.
-# Falls back to the heuristic impact() when DeepSeek is unavailable. Secrets
-# (DEEPSEEK_API_KEY) live in .env -- copy .env.example. Env vars override these.
-LLM_FORMATION_RATE = float(os.environ.get("LLM_FORMATION_RATE", "0.3"))
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+# --- LLM push (OpenAI-compatible): default Google Gemma 4 via the Gemini API ---
+# llm_impact.py asks an OpenAI-compatible chat model for a signed OCEAN delta in
+# [-1, 1] per trait, then push = clamp(LLM_FORMATION_RATE * delta); updater.py
+# applies it with diminishing returns. A max-strength delta (1.0) thus nudges a
+# neutral trait by the rate (~0.3), never all the way in one experience --
+# formation builds over many experiences. Falls back to the heuristic impact()
+# whenever no key/model is reachable.
+#
+# The default provider is Google's Gemma 4 through the Gemini API's
+# OpenAI-compatible endpoint. Put your Google AI Studio key in GEMINI_API_KEY
+# (copy .env.example). Any OpenAI-compatible endpoint still works -- point
+# LLM_BASE_URL + LLM_MODEL at it. The legacy DEEPSEEK_* names remain honored.
+def _env(*names, default=None):
+    """First non-empty environment variable among ``names`` (real env wins)."""
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return default
+
+
+LLM_API_KEY = _env("LLM_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY")
+LLM_BASE_URL = _env("LLM_BASE_URL", "DEEPSEEK_BASE_URL",
+                    default="https://generativelanguage.googleapis.com/v1beta/openai/")
+LLM_MODEL = _env("LLM_MODEL", "DEEPSEEK_MODEL", default="gemma-4-12b-it")
+LLM_FORMATION_RATE = float(_env("LLM_FORMATION_RATE", default="0.3"))
+
+# Backward-compatible aliases (older imports referenced these names).
+DEEPSEEK_MODEL = LLM_MODEL
+DEEPSEEK_BASE_URL = LLM_BASE_URL
+
+
+def _llm_label(model):
+    """Short provider tag for the UI/CLI (e.g. 'gemma', 'deepseek')."""
+    name = (model or "").lower()
+    if "gemma" in name:
+        return "gemma"
+    if "deepseek" in name:
+        return "deepseek"
+    if "gpt" in name or "openai" in name:
+        return "openai"
+    return "llm"
+
+
+LLM_LABEL = _llm_label(LLM_MODEL)
+
+
+def parse_json_object(text):
+    """Parse a JSON object from a model reply, tolerating ```fences``` and prose.
+
+    Open-weight models (Gemma included) sometimes wrap JSON in a markdown code
+    fence or add a stray sentence. We strip a leading/trailing fence and, failing
+    a direct parse, fall back to the outermost ``{...}`` span. Raises ValueError
+    if no JSON object can be found, so the callers fall back to the heuristic.
+    """
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    try:
+        return json.loads(cleaned)
+    except ValueError:
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
 
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience

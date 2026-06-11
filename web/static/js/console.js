@@ -188,7 +188,8 @@
     setFormBusy("genesis", true, "Bringing them to life…");
     try {
       const snap = await API.createGenesis(bio);
-      const via = snap.created_via === "deepseek" ? "seeded by DeepSeek" : "seeded heuristically";
+      const via = snap.created_via === "heuristic"
+        ? "seeded heuristically" : "seeded by " + snap.created_via;
       enterWith(snap, `${snap.name} was born — ${via}.`);
     } catch (e) {
       note.className = "form-note err"; note.textContent = e.message || "Something went wrong.";
