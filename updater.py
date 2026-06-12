@@ -22,14 +22,27 @@ def clamp(value, minimum=-1.0, maximum=1.0):
     return max(minimum, min(maximum, value))
 
 
+def apply_diminishing(state, push, keys=None):
+    """Move each dimension by its push with diminishing returns.
+
+        state[k] <- clamp(state[k] + push[k] * (1 - |state[k]|))
+
+    Shared by the OCEAN traits and the Schwartz values (``character``): same formation
+    dynamics, different substrate. ``keys`` selects which dimensions to update and
+    defaults to every key already present in ``state`` (pass the full basis to ensure
+    missing dims are seeded). Returns a new dict; ``state`` is left unchanged.
+    """
+    keys = list(state) if keys is None else keys
+    return {
+        k: clamp(state.get(k, 0.0) + push.get(k, 0.0) * (1 - abs(state.get(k, 0.0))))
+        for k in keys
+    }
+
+
 def update_personality(personality, push):
     """Return a new personality with each trait moved by its push (input unchanged)."""
-    traits = dict(personality["traits"])
-    for dim, value in traits.items():
-        traits[dim] = clamp(value + push.get(dim, 0.0) * (1 - abs(value)))
-
     return {
         **personality,
-        "traits": traits,
+        "traits": apply_diminishing(personality["traits"], push),
         "experience_count": personality.get("experience_count", 0) + 1,
     }

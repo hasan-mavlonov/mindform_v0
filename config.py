@@ -74,6 +74,53 @@ M = {
 # Lower it for slower, more gradual personality formation.
 FORMATION_RATE = 1.3
 
+# --- Character: Schwartz basic values (the values substrate formed by experience) -
+# Where TEMPERAMENT is the innate OCEAN baseline a character is *born* with, CHARACTER
+# is what they come to *prize* -- laid down by experience, not biology. We model it
+# with Schwartz's ten basic human values. Each is signed [-1, 1]: 0 = neutral,
+# +1 = central / strongly held, -1 = strongly rejected. Values start at 0 (earned,
+# not innate) and form by the SAME push + diminishing-returns dynamics as the traits.
+VALUES = ["SD", "ST", "HE", "AC", "PO", "SE", "CO", "TR", "BE", "UN"]
+VALUES_NAMES = {
+    "SD": "self-direction",   # independent thought and action; autonomy, curiosity
+    "ST": "stimulation",      # excitement, novelty, challenge
+    "HE": "hedonism",         # pleasure and enjoyment
+    "AC": "achievement",      # success through demonstrating competence
+    "PO": "power",            # status, prestige, control or dominance
+    "SE": "security",         # safety, harmony, stability
+    "CO": "conformity",       # restraint, fitting in, following norms
+    "TR": "tradition",        # custom, culture, religion
+    "BE": "benevolence",      # caring for people one is close to
+    "UN": "universalism",     # tolerance, justice, welfare of all and nature
+}
+# Schwartz's two higher-order axes (four poles), for plain-language roll-up readouts.
+# Hedonism bridges openness-to-change and self-enhancement, so its weight is split.
+VALUES_HIGHER_ORDER = {
+    "openness_to_change": {"SD": 1.0, "ST": 1.0, "HE": 0.5},
+    "self_enhancement":   {"AC": 1.0, "PO": 1.0, "HE": 0.5},
+    "conservation":       {"SE": 1.0, "CO": 1.0, "TR": 1.0},
+    "self_transcendence": {"BE": 1.0, "UN": 1.0},
+}
+# Appraisal -> values prior (heuristic fallback only; the LLM is primary, exactly as
+# with traits). Same shape and role as M: rows = VALUES, cols = appraisal dims. Hand-
+# authored and deliberately conservative -- the values that are hard to read from a
+# lexical appraisal (power, tradition, universalism) lean on the LLM and stay light.
+VALUES_M = {
+    "SD": {"agency": 0.5, "novelty": 0.3},
+    "ST": {"novelty": 0.6, "intensity": 0.3, "threat_challenge": 0.2},
+    "HE": {"valence": 0.5, "intensity": 0.2},
+    "AC": {"outcome": 0.6, "agency": 0.3},
+    "PO": {"agency": 0.4, "outcome": 0.2, "social": 0.2},
+    "SE": {"threat_challenge": -0.4, "valence": 0.1},   # threat teaches the worth of safety
+    "CO": {"social": 0.3, "agency": -0.2},
+    "TR": {"social": 0.2},
+    "BE": {"social": 0.5, "valence": 0.2},
+    "UN": {"social": 0.1, "valence": 0.1, "novelty": 0.1},
+}
+# How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
+# for a recurring experience to count as a habit.
+HABIT_MIN_RECURRENCE = 3
+
 # --- LLM push (OpenAI-compatible): default Google Gemma 4 via the Gemini API ---
 # llm_impact.py asks an OpenAI-compatible chat model for a signed OCEAN delta in
 # [-1, 1] per trait, then push = clamp(LLM_FORMATION_RATE * delta); updater.py
