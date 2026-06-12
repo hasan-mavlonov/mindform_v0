@@ -10,9 +10,10 @@ PORT=9000 python console.py  # choose a port
 ```
 
 No build step, no extra dependencies — it runs on the Python standard library and
-plain JavaScript. With a `DEEPSEEK_API_KEY` in `.env` the pushes and the
-character's replies come from DeepSeek; without one, everything still works on the
-engine's heuristic fallback (you just won't get LLM-quality prose).
+plain JavaScript. With a `GEMINI_API_KEY` in `.env` the pushes and the
+character's replies come from the LLM (Google Gemma 4 by default); without one,
+everything still works on the engine's heuristic fallback (you just won't get
+LLM-quality prose).
 
 > The personality engine is **not modified** by any of this. This package only
 > *calls* the existing modules (the same ones `interactive.py` uses) and draws the
@@ -21,7 +22,7 @@ engine's heuristic fallback (you just won't get LLM-quality prose).
 
 ## What you see
 
-It is one screen, built on the design in `design_handoff_mindform_console`.
+It is one screen.
 
 - **Start screen** — *Use existing* (your roster), *From a story* (`genesis`: a
   one-line bio seeds the OCEAN baseline), or *Build one* (identity fields + a 1–5
@@ -43,7 +44,7 @@ It is one screen, built on the design in `design_handoff_mindform_console`.
 
 ## How it maps onto the engine
 
-The design handoff was authored for a different repo (Django + Gemma, with a
+The original UI design was authored for a different repo (Django + Gemma, with a
 "beliefs" fast-loop). This repo has no beliefs and one set of dynamics: an
 experience produces a signed push, applied to the OCEAN traits with diminishing
 returns, anchored by a per-trait baseline. So the design's two loops are retold
@@ -52,7 +53,7 @@ colors, same motion language, real numbers.
 
 | Design piece | Real backing here |
 |---|---|
-| Chat reply | `web/reply.py` — DeepSeek if configured, trait-driven fallback otherwise (presentation only; never feeds the trait math) |
+| Chat reply | `web/reply.py` — the LLM (Gemma by default) if configured, trait-driven fallback otherwise (presentation only; never feeds the trait math) |
 | "Beliefs" bars (fast, magenta) | **The push** — `llm_impact.push_from_text(text)` |
 | "Traits" bars (slow, violet) | **OCEAN** — `personality["traits"]`, ghost tick at `temperament.mu`, moved by `updater.update_personality` |
 | Orb spokes / particles | the five OCEAN traits (value + baseline) |
@@ -73,7 +74,7 @@ web/
     index.html           # start screen + cockpit shell (design tokens)
     css/console.css       # styles, adapted from the handoff (center-zero bars)
     js/api.js             # fetch wrappers
-    js/orb.js             # canvas orb (vanilla port of the handoff's mind.jsx)
+    js/orb.js             # canvas orb (procedural, vanilla JS)
     js/console.js         # app logic: picker, cockpit, animation triggers
 ```
 
