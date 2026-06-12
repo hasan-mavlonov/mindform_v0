@@ -99,6 +99,9 @@ Experience:
 Output:
 {"O": 0.1, "C": 0.3, "E": 0.2, "A": 0.8, "N": -0.1}
 
+Do not think out loud or emit any <thought>/<thinking> block before the JSON --
+put any explanation in the "reasoning" field, nowhere else.
+
 Return ONLY valid JSON, with no markdown and no extra text, in exactly this format:
 
 {"O": float, "C": float, "E": float, "A": float, "N": float, "reasoning": "brief explanation"}
@@ -126,7 +129,9 @@ def _llm_delta(text):
             {"role": "user", "content": f"Experience:\n{text}"},
         ],
         temperature=0.2,
-        max_tokens=400,
+        # Headroom so a model that still narrates a <thought> block first can
+        # reach the JSON; parse_json_object strips the reasoning before parsing.
+        max_tokens=600,
         timeout=30,
     )
     data = parse_json_object(completion.choices[0].message.content)

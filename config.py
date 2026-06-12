@@ -121,15 +121,50 @@ def _llm_label(model):
 LLM_LABEL = _llm_label(LLM_MODEL)
 
 
+# Tag names open-weight models use to wrap their private chain-of-thought.
+_REASONING_TAGS = ("thought", "thinking", "think", "reasoning", "reason",
+                   "reflection", "scratchpad")
+
+
+def strip_reasoning(text):
+    """Remove any chain-of-thought block a model emitted before its real answer.
+
+    Open-weight instruction models -- Gemma among them -- sometimes narrate their
+    reasoning in a ``<thought>...</thought>`` block *before*, or *instead of*, the
+    answer. That block must never reach the user or the JSON parser, so we drop:
+
+    * well-formed ``<thought>...</thought>`` blocks (any of several tag names);
+    * a trailing block left unterminated when the model hit ``max_tokens``
+      mid-thought (``<thought>...`` to end of text); and
+    * any stray lone tag left over.
+
+    Matching is case-insensitive and tolerant of attributes/whitespace in the tag.
+    Returns the cleaned text (possibly empty, if the model produced only thinking).
+    """
+    if not text:
+        return ""
+    names = "|".join(_REASONING_TAGS)
+    # Closed blocks anywhere (backref keeps the open/close tag names matched).
+    text = re.sub(rf"<\s*({names})\b[^>]*>.*?<\s*/\s*\1\s*>", "", text,
+                  flags=re.IGNORECASE | re.DOTALL)
+    # A block left open by truncation: drop from the opening tag to the end.
+    text = re.sub(rf"<\s*({names})\b[^>]*>.*$", "", text,
+                  flags=re.IGNORECASE | re.DOTALL)
+    # Any orphaned lone tag.
+    text = re.sub(rf"<\s*/?\s*({names})\b[^>]*>", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 def parse_json_object(text):
     """Parse a JSON object from a model reply, tolerating ```fences``` and prose.
 
     Open-weight models (Gemma included) sometimes wrap JSON in a markdown code
-    fence or add a stray sentence. We strip a leading/trailing fence and, failing
-    a direct parse, fall back to the outermost ``{...}`` span. Raises ValueError
-    if no JSON object can be found, so the callers fall back to the heuristic.
+    fence, prepend a ``<thought>`` reasoning block, or add a stray sentence. We
+    strip reasoning, then a leading/trailing fence, and -- failing a direct parse
+    -- fall back to the outermost ``{...}`` span. Raises ValueError if no JSON
+    object can be found, so the callers fall back to the heuristic.
     """
-    cleaned = (text or "").strip()
+    cleaned = strip_reasoning(text)
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```[a-zA-Z0-9]*\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned).strip()

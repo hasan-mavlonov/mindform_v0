@@ -8,15 +8,20 @@ moves the traits comes solely from ``llm_impact.push_from_text`` on the user's
 message, computed in the bridge before this is ever called.
 
 Resolution order (same discipline as the engine's push):
-    1. DeepSeek (OpenAI-compatible) if ``DEEPSEEK_API_KEY`` is set   [primary]
-    2. a deterministic, trait-driven rule-based line                 [fallback]
+    1. the configured LLM (Google Gemma 4 by default) if a key is set  [primary]
+    2. a deterministic, trait-driven rule-based line                   [fallback]
 
-So the reply works fully offline and never hard-depends on the network.
+The model's reply is run through ``config.strip_reasoning`` first, so a
+``<thought>`` chain-of-thought block never reaches the user; if nothing but
+reasoning comes back, we fall through to the rule-based voice. So the reply works
+fully offline and never hard-depends on the network.
 """
 
 import logging
 
-from config import BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY
+from config import (
+    BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, strip_reasoning,
+)
 
 log = logging.getLogger("mindform.web.reply")
 
@@ -28,6 +33,10 @@ directly. Respond in the FIRST PERSON as this character, in 1-3 short sentences.
 Let your current personality color HOW you speak -- your word choice, your warmth
 or bluntness, your calm or your nerves -- but never recite your trait numbers and
 never break character. No preamble, no quotation marks.
+
+Output ONLY the spoken reply itself. Do NOT think out loud, narrate your
+reasoning, or emit any <thought>, <thinking>, or analysis block -- the user must
+see the words you say and nothing else.
 
 The trait model is OCEAN, each value in [-1, 1] (0 = average):
 {traits}
@@ -70,10 +79,18 @@ def _llm_reply(personality, user_text):
             {"role": "user", "content": user_text},
         ],
         temperature=0.8,
-        max_tokens=160,
+        # Generous enough that a model which still "thinks" first has room to
+        # reach the actual reply -- strip_reasoning then drops the thinking. Too
+        # small a budget is what made the leaked <thought> block the whole reply.
+        max_tokens=512,
         timeout=30,
     )
-    return completion.choices[0].message.content.strip()
+    reply = strip_reasoning(completion.choices[0].message.content)
+    if not reply:
+        # The model produced only a (possibly truncated) reasoning block -- treat
+        # it as a failure so generate_reply falls back to the rule-based voice.
+        raise RuntimeError("model returned only a reasoning block, no reply")
+    return reply
 
 
 # --- Deterministic fallback: trait-driven, dependency-free, always available ---

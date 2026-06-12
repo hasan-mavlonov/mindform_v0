@@ -1,10 +1,10 @@
 /* MindForm Console -- styles.
  *
- * Built on the design-handoff tokens (design_handoff_mindform_console). The
- * cockpit shell, header, chat, orb and bars follow the prototype 1:1; the bars
- * are center-zero because OCEAN traits are signed [-1, 1] (the prototype's were
- * unsigned). A start screen (character picker / creation) is added on top in the
- * same visual language. No build step, no framework -- plain CSS.
+ * The cockpit shell, header, chat, orb and bars follow the original MindForm
+ * Console design; the bars are center-zero because OCEAN traits are signed
+ * [-1, 1] (the original's were unsigned). A start screen (character picker /
+ * creation) is added on top in the same visual language. No build step, no
+ * framework -- plain CSS.
  */
 
 /* ---------- tokens (verbatim from the handoff) ---------- */
