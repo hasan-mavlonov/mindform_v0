@@ -17,21 +17,27 @@ def clamp(value, minimum=-1.0, maximum=1.0):
     return max(minimum, min(maximum, value))
 
 
-def rule_pull(appraisal):
-    """Project the appraisal vector onto the trait basis via the matrix M."""
+def rule_pull(appraisal, basis=BASIS, matrix=M):
+    """Project the appraisal vector onto a basis via a prior matrix (default: traits)."""
     return {
         dim: clamp(sum(weight * appraisal.get(col, 0.0)
-                       for col, weight in M.get(dim, {}).items()))
-        for dim in BASIS
+                       for col, weight in matrix.get(dim, {}).items()))
+        for dim in basis
     }
 
 
-def impact(appraisal):
-    """Return the signed per-trait push for an experience's appraisal."""
+def impact(appraisal, basis=BASIS, matrix=M, rate=FORMATION_RATE):
+    """Return the signed per-dimension push for an experience's appraisal.
+
+    Defaults project onto the OCEAN traits (``config.M``). Pass ``basis`` / ``matrix``
+    / ``rate`` to reuse the very same salience-scaled, clamped projection for another
+    substrate -- e.g. the Schwartz values (``config.VALUES`` / ``config.VALUES_M``),
+    which is the heuristic fallback for character formation.
+    """
     salience = (
         appraisal.get("intensity", 0.0)
         * (0.5 + 0.5 * appraisal.get("self_relevance", 0.0))
         * (0.5 + 0.5 * appraisal.get("novelty", 0.0))
     )
-    pull = rule_pull(appraisal)
-    return {dim: clamp(FORMATION_RATE * salience * pull[dim]) for dim in BASIS}
+    pull = rule_pull(appraisal, basis, matrix)
+    return {dim: clamp(rate * salience * pull[dim]) for dim in basis}

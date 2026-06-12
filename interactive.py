@@ -20,7 +20,9 @@ from temperament import build_character, genesis
 from encoder import encode_text
 from appraisal import appraise
 from llm_impact import push_from_text
+from values import values_push_from_text
 from updater import update_personality
+from character import default_character, update_values, note_habit, read_values
 from memory import create_memory, recurrence
 
 
@@ -36,6 +38,16 @@ def print_state(personality):
         mu = temperament[name]["mu"]
         tau = temperament[name]["tau"]
         print(f"  {name:18s}: {value:+.3f}   (<- mu {mu:+.2f}, tau {tau:.2f})")
+
+    character = personality.get("character") or {}
+    strong = [(n, v) for n, v in read_values(character).items() if abs(v) > 0.005]
+    if strong:
+        print("\nCHARACTER VALUES    (Schwartz, strongest first):")
+        for name, value in strong[:5]:
+            print(f"  {name:18s}: {value:+.3f}")
+    habits = character.get("habits") or []
+    if habits:
+        print("\nHABITS: " + ", ".join(f"{h['text']} (x{h['count']})" for h in habits))
     print()
 
 
@@ -158,6 +170,13 @@ def run():
 
         push, source, reasoning = push_from_text(text, appraisal)
         personality = update_personality(personality, push)
+
+        # CHARACTER: the same experience forms the Schwartz values, and a recurring
+        # one (this occurrence included) settles into a habit.
+        values_push, _, _ = values_push_from_text(text, appraisal)
+        character = update_values(personality.get("character") or default_character(), values_push)
+        character = note_habit(character, text, seen + 1)
+        personality = {**personality, "character": character}
 
         create_memory(text, embedding, appraisal, push, personality, name=name)
         save_character(personality)

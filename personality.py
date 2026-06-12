@@ -14,7 +14,8 @@ import json
 import os
 import re
 
-from config import BASIS, BASIS_NAMES, DEFAULT_TAU
+from config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES
+from character import default_character
 
 PERSONALITY_FILE = "data/personality.json"
 CHARACTERS_DIR = "data/characters"
@@ -34,6 +35,7 @@ def default_personality():
         "identity": {},
         "temperament": default_temperament(),
         "traits": {d: 0.0 for d in BASIS},
+        "character": default_character(),
         "experience_count": 0,
     }
 
@@ -48,6 +50,19 @@ def _ensure_temperament(personality):
             "mu": {d: traits.get(d, 0.0) for d in BASIS},
             "tau": {d: DEFAULT_TAU for d in BASIS},
         }
+    return personality
+
+
+def _ensure_character(personality):
+    """Backfill the character (Schwartz values + habits) onto a pre-character save."""
+    character = personality.get("character")
+    if not isinstance(character, dict):
+        personality["character"] = default_character()
+    else:
+        character.setdefault("habits", [])
+        values = character.setdefault("values", {})
+        for v in VALUES:                      # seed any missing value at neutral
+            values.setdefault(v, 0.0)
     return personality
 
 
@@ -67,7 +82,7 @@ def migrate(data):
             key = name_to_key.get(name)
             if key is not None:
                 personality["traits"][key] = value
-    return _ensure_temperament(personality)
+    return _ensure_character(_ensure_temperament(personality))
 
 
 def _read(path):

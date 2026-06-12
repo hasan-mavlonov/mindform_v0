@@ -24,6 +24,7 @@ from config import (
     BASIS, DEFAULT_TAU, LLM_LABEL, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY,
     parse_json_object,
 )
+from character import default_character
 
 log = logging.getLogger("mindform.genesis")
 
@@ -171,6 +172,7 @@ def _finalize(seed, overrides=None):
         "identity": dict(seed.get("identity") or {}),
         "temperament": {"mu": mu, "tau": tau},
         "traits": dict(mu),       # born at baseline: x = mu
+        "character": default_character(),   # values start neutral -- earned, not innate
         "experience_count": 0,
     }
 
