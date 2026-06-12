@@ -11,16 +11,16 @@ Resolution order (same discipline as the engine's push):
     1. the configured LLM (Google Gemma 4 by default) if a key is set  [primary]
     2. a deterministic, trait-driven rule-based line                   [fallback]
 
-Gemma likes to answer free-text prompts with a ``<thought>`` block written as plain
-text (the JSON paths survive it because they end in JSON; a chat reply does not). So
-the reply call is hardened: a one-shot example primes a clean line, the response is
-run through ``config.strip_reasoning``, a quoted line is salvaged if only reasoning
-came back, and one blunt retry follows -- only then do we fall through to the
-rule-based voice. So the reply works fully offline and never hard-depends on the network.
+Gemma writes a ``<thought>`` block as plain text before its answer (the JSON paths
+survive it because they end in JSON; a free-text chat reply does not). It is the
+model's own behaviour, not the API thinking feature, so it cannot be switched off --
+instead we give the call enough token budget for the thought to FINISH and the reply
+to follow, then ``config.strip_reasoning`` drops the thought. A one-shot example keeps
+the surfacing line on-format, with one retry and the rule-based fallback behind it. So
+the reply works fully offline and never hard-depends on the network.
 """
 
 import logging
-import re
 
 from config import (
     BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, strip_reasoning,
@@ -71,27 +71,16 @@ def _character_name(personality):
     return name or "yourself"
 
 
-def _extract_reply(content):
-    """Pull the spoken line out of a model response, dropping any reasoning.
-
-    ``strip_reasoning`` handles the normal case. When the model returned *only* a
-    <thought> block, the line it meant to say is often the last double-quoted span
-    inside it -- salvage that rather than discard the whole call.
-    """
-    reply = strip_reasoning(content)
-    if reply:
-        return reply
-    quoted = re.findall(r'["“”]([^"“”]{3,}?)["“”]', content or "")
-    return quoted[-1].strip() if quoted else ""
-
-
 def _llm_reply(personality, user_text):
-    """Ask the LLM (Gemma 4 by default) for an in-character line.
+    """Ask Gemma for an in-character line.
 
-    Hardened against Gemma's habit of answering with nothing but a <thought> block:
-    a one-shot format example primes a clean reply; if a response still comes back as
-    pure reasoning we salvage a quoted line, then retry once more bluntly, before
-    giving up so ``generate_reply`` falls back to the rule-based voice.
+    gemma-4-31b-it writes its reasoning as a literal ``<thought>`` block in the
+    message content *before* the reply -- the model's own behaviour, not the API
+    thinking feature (which it rejects), so it cannot be switched off. The budget
+    must therefore be large enough for the thought to FINISH and the spoken line to
+    follow; ``strip_reasoning`` then drops the thought. A one-shot example keeps the
+    surfacing line on-format; one retry and the rule-based fallback cover the rare
+    truncation. Raises on failure so ``generate_reply`` falls back to the rule voice.
     """
     if not LLM_API_KEY:
         raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
@@ -111,13 +100,15 @@ def _llm_reply(personality, user_text):
             model=LLM_MODEL,
             messages=base + [{"role": "user", "content": user_text + suffix}],
             temperature=0.7,
-            max_tokens=600,    # headroom so a reply can still follow any stray thinking
-            timeout=30,
+            # Big enough for Gemma's <thought> to finish and the reply to follow;
+            # too small a budget is what left only a truncated thought to strip.
+            max_tokens=2048,
+            timeout=45,
         )
-        reply = _extract_reply(completion.choices[0].message.content)
+        reply = strip_reasoning(completion.choices[0].message.content)
         if reply:
             return reply
-        log.info("reply attempt %d was reasoning-only%s",
+        log.info("reply attempt %d truncated mid-thought%s",
                  attempt + 1, "; retrying" if attempt == 0 else "")
 
     raise RuntimeError("model returned only a reasoning block, no reply")
