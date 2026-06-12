@@ -11,10 +11,13 @@ Resolution order (same discipline as the engine's push):
     1. the configured LLM (Google Gemma 4 by default) if a key is set  [primary]
     2. a deterministic, trait-driven rule-based line                   [fallback]
 
-The model's reply is run through ``config.strip_reasoning`` first, so a
-``<thought>`` chain-of-thought block never reaches the user; if nothing but
-reasoning comes back, we fall through to the rule-based voice. So the reply works
-fully offline and never hard-depends on the network.
+Gemma writes a ``<thought>`` block as plain text before its answer (the JSON paths
+survive it because they end in JSON; a free-text chat reply does not). It is the
+model's own behaviour, not the API thinking feature, so it cannot be switched off --
+instead we give the call enough token budget for the thought to FINISH and the reply
+to follow, then ``config.strip_reasoning`` drops the thought. A one-shot example keeps
+the surfacing line on-format, with one retry and the rule-based fallback behind it. So
+the reply works fully offline and never hard-depends on the network.
 """
 
 import logging
@@ -25,22 +28,28 @@ from config import (
 
 log = logging.getLogger("mindform.web.reply")
 
-_REPLY_PROMPT = """You ARE the character described below -- a person whose
-personality is being shaped, experience by experience, by the MindForm engine.
+# A blunt, concrete brief beats a poetic one: open-weight models (Gemma included)
+# are far likelier to narrate a <thought> block when the instruction is abstract.
+_REPLY_SYSTEM = """You are {name}. Speak ONLY as yourself, out loud, in the first person.
 
-The user just told you about something that happened to you, or spoke to you
-directly. Respond in the FIRST PERSON as this character, in 1-3 short sentences.
-Let your current personality color HOW you speak -- your word choice, your warmth
-or bluntness, your calm or your nerves -- but never recite your trait numbers and
-never break character. No preamble, no quotation marks.
+Your personality right now (OCEAN traits, each -1..1, 0 = average) shapes HOW you
+talk -- your warmth or bluntness, your calm or your nerves. Never say the numbers,
+never break character:
+{traits}{identity}
 
-Output ONLY the spoken reply itself. Do NOT think out loud, narrate your
-reasoning, or emit any <thought>, <thinking>, or analysis block -- the user must
-see the words you say and nothing else.
+Reply to what the user says in ONE or TWO short spoken sentences. Output only the
+words you say -- no analysis, no explanation, no <thought> or <thinking> block, no
+stage directions, no quotation marks."""
 
-The trait model is OCEAN, each value in [-1, 1] (0 = average):
-{traits}
-{identity}"""
+# One neutral example turn anchors the FORMAT (a clean short line, no reasoning).
+# A demonstrated assistant reply suppresses the thinking block far more reliably
+# than any "do not think" instruction can.
+_REPLY_SHOTS = [
+    {"role": "user", "content": "I finally finished the project I'd been dreading for weeks."},
+    {"role": "assistant", "content": "I feel lighter than I have in ages -- part of me wasn't sure I had it in me."},
+]
+
+_RETRY_SUFFIX = "\n\n(Reply out loud now -- one or two sentences, in character, no analysis.)"
 
 
 def _describe_traits(personality):
@@ -54,13 +63,24 @@ def _describe_traits(personality):
 def _describe_identity(personality):
     identity = personality.get("identity") or {}
     facts = ", ".join(f"{k}: {v}" for k, v in identity.items() if v and k != "bio")
-    return f"\nWho you are: {facts}" if facts else ""
+    return f"\n\nWho you are: {facts}" if facts else ""
+
+
+def _character_name(personality):
+    name = ((personality.get("identity") or {}).get("name") or "").strip()
+    return name or "yourself"
 
 
 def _llm_reply(personality, user_text):
-    """Ask the LLM (Gemma 4 by default) for an in-character line.
+    """Ask Gemma for an in-character line.
 
-    Raises on any failure so ``generate_reply`` falls back to the rule-based voice.
+    gemma-4-31b-it writes its reasoning as a literal ``<thought>`` block in the
+    message content *before* the reply -- the model's own behaviour, not the API
+    thinking feature (which it rejects), so it cannot be switched off. The budget
+    must therefore be large enough for the thought to FINISH and the spoken line to
+    follow; ``strip_reasoning`` then drops the thought. A one-shot example keeps the
+    surfacing line on-format; one retry and the rule-based fallback cover the rare
+    truncation. Raises on failure so ``generate_reply`` falls back to the rule voice.
     """
     if not LLM_API_KEY:
         raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
@@ -68,29 +88,30 @@ def _llm_reply(personality, user_text):
     from openai import OpenAI  # lazy: the rule-based fallback works without this
 
     client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    system = _REPLY_PROMPT.format(
+    system = _REPLY_SYSTEM.format(
+        name=_character_name(personality),
         traits=_describe_traits(personality),
         identity=_describe_identity(personality),
     )
-    completion = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_text},
-        ],
-        temperature=0.8,
-        # Generous enough that a model which still "thinks" first has room to
-        # reach the actual reply -- strip_reasoning then drops the thinking. Too
-        # small a budget is what made the leaked <thought> block the whole reply.
-        max_tokens=512,
-        timeout=30,
-    )
-    reply = strip_reasoning(completion.choices[0].message.content)
-    if not reply:
-        # The model produced only a (possibly truncated) reasoning block -- treat
-        # it as a failure so generate_reply falls back to the rule-based voice.
-        raise RuntimeError("model returned only a reasoning block, no reply")
-    return reply
+    base = [{"role": "system", "content": system}] + _REPLY_SHOTS
+
+    for attempt, suffix in enumerate(("", _RETRY_SUFFIX)):
+        completion = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=base + [{"role": "user", "content": user_text + suffix}],
+            temperature=0.7,
+            # Big enough for Gemma's <thought> to finish and the reply to follow;
+            # too small a budget is what left only a truncated thought to strip.
+            max_tokens=2048,
+            timeout=45,
+        )
+        reply = strip_reasoning(completion.choices[0].message.content)
+        if reply:
+            return reply
+        log.info("reply attempt %d truncated mid-thought%s",
+                 attempt + 1, "; retrying" if attempt == 0 else "")
+
+    raise RuntimeError("model returned only a reasoning block, no reply")
 
 
 # --- Deterministic fallback: trait-driven, dependency-free, always available ---
