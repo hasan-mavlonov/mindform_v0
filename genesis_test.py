@@ -1,4 +1,4 @@
-"""Genesis / temperament acceptance test (Slice 1) -- dependency-free.
+"""Genesis / character-creation acceptance test -- dependency-free.
 
 Demonstrates the temperament seed and character authoring:
 
@@ -10,8 +10,8 @@ Demonstrates the temperament seed and character authoring:
   * build_character(identity, mu) uses an explicitly chosen baseline, no LLM
     (the manual questionnaire path)
   * the roster saves / lists / reloads multiple named characters
-  * Slice 1 has no temperament dynamics yet: an experience still moves the traits
-    by the existing diminishing-returns rule, and identity/temperament ride through
+  * an experience still moves a trait and preserves the identity/temperament fields
+    (the temperament pull-back + drift now live in updater.py; see acceptance_test.py)
 
 Run: python3 genesis_test.py
 """
@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory() as tmp:
     roster_lists = names == ["Aisha", "Bordi"]
     roster_reloads = P.load_character("Bordi")["temperament"]["mu"]["C"] == 0.8
 
-# Slice 1: dynamics off -- the trait update still works and preserves new fields
+# the trait update still moves a trait and preserves the identity/temperament fields
 after = update_personality(default_personality(), impact(appraise("I went to a party and had fun.")))
 update_preserves = after["traits"]["E"] > 0 and "temperament" in after and "identity" in after
 

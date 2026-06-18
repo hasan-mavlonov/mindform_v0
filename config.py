@@ -226,14 +226,22 @@ def parse_json_object(text):
 # --- Memory / recurrence ---
 RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
 
-# --- Temperament (genesis baseline) ---
+# --- Temperament (genesis baseline + dynamics) ---
 # A character is born (temperament.genesis) with a per-trait OCEAN baseline `mu`
 # in [-1, 1] and a per-trait stickiness `tau` in [0, 1]. The current traits start
 # AT the baseline (x = mu). DEFAULT_TAU is used when a seed leaves stickiness
-# unspecified (and for blank / legacy characters). High tau = resilient (snaps
-# back to baseline); low tau = easily reshaped. The baseline-as-attractor and slow
-# baseline-drift dynamics that consume tau are added in updater.py (Slice 2).
+# unspecified (and for blank / legacy characters).
+#
+# Every experience, updater.py applies the temperament dynamics:
+#   x[k]  <- x[k] + tau[k] * (mu[k] - x[k])              # pull the trait back to baseline
+#   mu[k] <- mu[k] + TEMPERAMENT_DRIFT * (x[k] - mu[k])  # baseline drifts toward lived state
+# tau is the fraction of the gap to baseline closed per experience: high tau =
+# resilient (snaps back), low tau = easily reshaped. TEMPERAMENT_DRIFT (eta) is the same
+# idea for the baseline itself and stays << tau, so only a *sustained* shift moves your
+# wiring. With the pull on, a repeated experience settles a trait at a fixed point
+# between its baseline and the extreme rather than at the +/-1 wall.
 DEFAULT_TAU = 0.30
+TEMPERAMENT_DRIFT = 0.02   # eta: baseline plasticity per experience (must stay << tau)
 
 # --- Identity (immutable facts collected when a character is created) ---
 # (field_key, prompt_label), in the order the creation form asks for them. These

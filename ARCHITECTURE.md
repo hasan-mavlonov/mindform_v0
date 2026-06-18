@@ -57,16 +57,19 @@ memories alongside as `<slug>.memories.json`). `interactive.py` opens with **Use
 (lists the roster, pick one) or **Create new** (identity + trait questionnaire), then drops
 into the talk loop, autosaving the active character each turn.
 
-**Slice 1 (today)** only *seeds* the baseline. **Slice 2** turns on the temperament
-dynamics in the update -- the current trait pulled back toward its baseline, and the
-baseline drifting slowly after a sustained shift:
+The temperament dynamics are **live** (Slice 2): every experience, after the push,
+`updater.py` pulls the current trait back toward its baseline and drifts the baseline
+slowly toward the lived state:
 ```
-x[k]  <- x[k] + tau[k] * (mu[k] - x[k])   # prior pulls current toward baseline
-mu[k] <- mu[k] + eta    * (x[k] - mu[k])  # baseline drifts slowly (eta << tau)
+x[k]  <- x[k] + tau[k] * (mu[k] - x[k])              # prior pulls current toward baseline
+mu[k] <- mu[k] + TEMPERAMENT_DRIFT * (x[k] - mu[k])  # baseline drifts slowly (eta << tau)
 ```
-With the pull active, repeated experience settles a trait at a fixed point *between* its
-baseline and the extreme -- so identical lives with different temperaments end up as
-different stable people. (Bayesian point-estimate now; per-trait distributions later.)
+`tau` is the fraction of the gap to baseline closed per experience (high = resilient,
+low = easily reshaped); `TEMPERAMENT_DRIFT` (~0.02) is far smaller, so only a *sustained*
+shift moves the baseline. With the pull active, repeated experience settles a trait at a
+fixed point *between* its baseline and the extreme -- so identical lives with different
+temperaments end up as different stable people. (Bayesian point-estimate now; per-trait
+distributions later.)
 
 ## Character (what you become from experience)
 Temperament is the baseline you're *born* with; **character** is what you grow into by
