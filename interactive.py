@@ -21,9 +21,13 @@ from encoder import encode_text
 from appraisal import appraise
 from llm_impact import push_from_text
 from values import values_push_from_text
+from moral import moral_push_from_text
 from updater import update_personality
-from character import default_character, update_values, note_habit, read_values
-from memory import create_memory, recurrence
+from character import (
+    default_character, update_values, update_moral, note_habit, form_beliefs,
+    read_values, read_moral, read_beliefs,
+)
+from memory import create_memory, recurrence, load_memories
 
 
 def print_state(personality):
@@ -45,6 +49,16 @@ def print_state(personality):
         print("\nCHARACTER VALUES    (Schwartz, strongest first):")
         for name, value in strong[:5]:
             print(f"  {name:18s}: {value:+.3f}")
+    strong_moral = [(n, v) for n, v in read_moral(character).items() if abs(v) > 0.005]
+    if strong_moral:
+        print("\nMORAL OUTLOOK       (Moral Foundations, strongest first):")
+        for name, value in strong_moral[:6]:
+            print(f"  {name:18s}: {value:+.3f}")
+    beliefs = read_beliefs(character)
+    if beliefs:
+        print("\nBELIEFS (conviction, strongest first):")
+        for b in beliefs[:5]:
+            print(f"  {b['confidence']:+.2f}  {b['statement']}  (x{b.get('count', 1)})")
     habits = character.get("habits") or []
     if habits:
         print("\nHABITS: " + ", ".join(f"{h['text']} (x{h['count']})" for h in habits))
@@ -171,14 +185,20 @@ def run():
         push, source, reasoning = push_from_text(text, appraisal)
         personality = update_personality(personality, push)
 
-        # CHARACTER: the same experience forms the Schwartz values, and a recurring
-        # one (this occurrence included) settles into a habit.
+        # CHARACTER: the same experience forms the Schwartz values and the moral
+        # outlook, and a recurring one (this occurrence included) settles into a habit.
         values_push, _, _ = values_push_from_text(text, appraisal)
+        moral_push, _, _ = moral_push_from_text(text, appraisal)
         character = update_values(personality.get("character") or default_character(), values_push)
+        character = update_moral(character, moral_push)
         character = note_habit(character, text, seen + 1)
         personality = {**personality, "character": character}
 
         create_memory(text, embedding, appraisal, push, personality, name=name)
+        # BELIEF: turn this experience (now in memory) -- and any offline backlog --
+        # into beliefs, deduped by embedding similarity. A no-op without the LLM.
+        character = form_beliefs(personality["character"], load_memories(name), embedder=encode_text)
+        personality = {**personality, "character": character}
         save_character(personality)
 
         print("\n--- RESULT ---")
