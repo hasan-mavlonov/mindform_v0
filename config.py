@@ -117,6 +117,34 @@ VALUES_M = {
     "BE": {"social": 0.5, "valence": 0.2},
     "UN": {"social": 0.1, "valence": 0.1, "novelty": 0.1},
 }
+
+# --- Character: Moral Foundations (the moral-outlook substrate formed by experience) -
+# A second CHARACTER vector alongside the Schwartz values: Haidt's six Moral Foundations.
+# Each is signed [-1, 1]: +1 = the person comes to hold this moral concern strongly,
+# -1 = actively dismisses it, 0 = neutral. Like the values, foundations start at 0
+# (earned, not innate) and form by the SAME push + diminishing-returns dynamics.
+MORAL = ["CARE", "FAIR", "LOYAL", "AUTH", "SANC", "LIB"]
+MORAL_NAMES = {
+    "CARE":  "care / harm",             # compassion; protecting others from suffering
+    "FAIR":  "fairness / cheating",     # justice, reciprocity, proportionality
+    "LOYAL": "loyalty / betrayal",      # standing with one's group, family, team
+    "AUTH":  "authority / subversion",  # respect for hierarchy, tradition, duty, order
+    "SANC":  "sanctity / degradation",  # purity, the sacred, self-discipline, disgust
+    "LIB":   "liberty / oppression",    # resisting domination and coercion; valuing freedom
+}
+# Appraisal -> moral prior (heuristic fallback only; the LLM is primary, as with values).
+# Morality is poorly captured by an affect appraisal, so this is deliberately light: the
+# readable foundations (care/loyalty from social warmth, liberty from agency) get a weak
+# signal; sanctity and authority lean entirely on the LLM and stay near-empty.
+MORAL_M = {
+    "CARE":  {"social": 0.3, "valence": 0.3},
+    "FAIR":  {"outcome": 0.3, "agency": 0.2},
+    "LOYAL": {"social": 0.4},
+    "AUTH":  {"agency": -0.2},
+    "SANC":  {},                         # not readable from affect -> LLM only
+    "LIB":   {"agency": 0.3, "novelty": 0.2},
+}
+
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3

@@ -18,14 +18,18 @@ import logging
 
 from config import (
     BASIS, BASIS_NAMES, TRAIT_QUESTIONS, TRAIT_LEVELS, IDENTITY_FIELDS,
-    APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES,
+    APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES, MORAL, MORAL_NAMES,
 )
 from appraisal import appraise
 from llm_impact import push_from_text
 from values import values_push_from_text
+from moral import moral_push_from_text
 from updater import update_personality
 from temperament import genesis, build_character
-from character import default_character, update_values, note_habit, higher_order, dominant_value
+from character import (
+    default_character, update_values, update_moral, note_habit,
+    higher_order, dominant_value,
+)
 from personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
@@ -131,14 +135,36 @@ def _values_push_rows(push):
     } for v in VALUES]
 
 
-def _character_block(personality, *, push=None, source=None, reasoning=""):
-    """CHARACTER snapshot: current values, their higher-order roll-up, the dominant
-    value, the habits formed so far, and the push this experience applied."""
+def _moral_rows(character):
+    """The six Moral Foundations at their current standing (signed [-1, 1])."""
+    moral = (character or {}).get("moral") or {}
+    return [{
+        "key": m,
+        "label": MORAL_NAMES[m],
+        "value": float(moral.get(m, 0.0)),
+    } for m in MORAL]
+
+
+def _moral_push_rows(push):
+    """The signed per-foundation pressure this experience applied (zeros if none)."""
+    push = push or {}
+    return [{
+        "key": m,
+        "label": MORAL_NAMES[m],
+        "value": float(push.get(m, 0.0)),
+    } for m in MORAL]
+
+
+def _character_block(personality, *, push=None, source=None, reasoning="", moral_push=None):
+    """CHARACTER snapshot: current values + moral outlook, the values' higher-order
+    roll-up, the dominant value, the habits formed so far, and the pushes applied."""
     character = personality.get("character") or {}
     return {
         "values": _value_rows(character),
         "higher_order": higher_order(character.get("values") or {}),
         "dominant": dominant_value(character),
+        "moral": _moral_rows(character),
+        "moral_push": _moral_push_rows(moral_push),
         "habits": character.get("habits") or [],
         "push": _values_push_rows(push),
         "source": source,
@@ -168,7 +194,8 @@ def _formation(before, after):
 
 def snapshot(personality, *, push=None, appraisal=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
-             values_push=None, values_source=None, values_reasoning=""):
+             values_push=None, values_source=None, values_reasoning="",
+             moral_push=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -186,7 +213,7 @@ def snapshot(personality, *, push=None, appraisal=None, source=None,
         "dominant": _dominant(trait_rows),
         "character": _character_block(
             personality, push=values_push, source=values_source,
-            reasoning=values_reasoning,
+            reasoning=values_reasoning, moral_push=moral_push,
         ),
         "reply": reply,
     }
@@ -284,15 +311,17 @@ def run_turn(name, message):
     appraisal = appraise(text)
     push, source, reasoning = push_from_text(text, appraisal)
     values_push, values_source, values_reasoning = values_push_from_text(text, appraisal)
+    moral_push, _, _ = moral_push_from_text(text, appraisal)
 
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
 
     seen = _recurrence_and_memory(text, appraisal, push, personality, char_name)
 
-    # CHARACTER: the same experience forms the values, and a recurring one (seen
-    # before, this occurrence included) settles into a habit.
+    # CHARACTER: the same experience forms the values and the moral outlook, and a
+    # recurring one (seen before, this occurrence included) settles into a habit.
     character = update_values(personality.get("character") or default_character(), values_push)
+    character = update_moral(character, moral_push)
     character = note_habit(character, text, (seen or 0) + 1)
     personality = {**personality, "character": character}
 
@@ -305,5 +334,5 @@ def run_turn(name, message):
         personality, push=push, appraisal=appraisal, source=source,
         reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
-        values_reasoning=values_reasoning,
+        values_reasoning=values_reasoning, moral_push=moral_push,
     )

@@ -16,10 +16,11 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
           DeepSeek LLM  (llm_impact.py): text -> OCEAN delta x LLM_FORMATION_RATE  [primary]
           heuristic     (appraisal.py -> impact.py): appraisal vector -> push      [fallback]
      -> diminishing-returns update of the five traits (updater.py)
-     -> CHARACTER: the same experience pushes the ten Schwartz values
-          (values.py: LLM delta x LLM_FORMATION_RATE [primary]; impact + VALUES_M [fallback])
-          -> same diminishing-returns update (character.py); recurring experiences
-          settle into habits (memory.recurrence -> character.note_habit)
+     -> CHARACTER: the same experience pushes the ten Schwartz values AND the six
+          Moral Foundations (values.py / moral.py: LLM delta x LLM_FORMATION_RATE [primary];
+          impact + VALUES_M / MORAL_M [fallback]) -> same diminishing-returns update
+          (character.py); recurring experiences settle into habits
+          (memory.recurrence -> character.note_habit)
      -> persist + memory   (personality.py, memory.py)
 ```
 
@@ -29,8 +30,9 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
   `tau in [0,1]`, seeded at genesis; `identity` holds immutable facts (name, origin,
   religion-raised, ...). The current `traits` are born at the baseline (x = mu).
 - **Character** (`character.py`): what a person *becomes* from experience -- the ten
-  Schwartz **values** (`config.VALUES`, each signed [-1,1]) plus the **habits** they
-  fall into. Unlike temperament, values are **not** innate: they start at 0 and form.
+  Schwartz **values** (`config.VALUES`) and the six Moral Foundations / **moral outlook**
+  (`config.MORAL`), each signed [-1,1], plus the **habits** they fall into. Unlike
+  temperament, these are **not** innate: they start at 0 and form.
 - **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
   `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
   -- the causal ingredients of change, not a trait-expression reading.
@@ -87,6 +89,13 @@ Stimulation/Self-Direction while lowering Security). `character.higher_order` ro
 onto Schwartz's four poles (openness-to-change, self-enhancement, conservation,
 self-transcendence) for plain-language read-outs. Values start at **0** -- earned, not
 innate -- which is exactly what separates character (experience) from temperament (biology).
+
+Alongside the values, the same machinery forms the **moral outlook** -- Haidt's six Moral
+Foundations (`config.MORAL`: care, fairness, loyalty, authority, sanctity, liberty), each
+signed [-1,1] and formed by `moral.moral_push_from_text` (LLM primary, `impact + MORAL_M`
+fallback) through the very same diminishing-returns update. The values say *what you prize*;
+the foundations say *what you treat as right or wrong*. (**Belief** -- a propositional store
+-- is the remaining Character piece, coming next.)
 
 **Habits** are the behavioral residue of repetition: when an experience recurs
 (`memory.recurrence`) past `config.HABIT_MIN_RECURRENCE`, `character.note_habit` records

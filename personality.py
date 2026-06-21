@@ -14,7 +14,7 @@ import json
 import os
 import re
 
-from config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES
+from config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL
 from character import default_character
 
 PERSONALITY_FILE = "data/personality.json"
@@ -63,6 +63,9 @@ def _ensure_character(personality):
         values = character.setdefault("values", {})
         for v in VALUES:                      # seed any missing value at neutral
             values.setdefault(v, 0.0)
+        moral = character.setdefault("moral", {})
+        for m in MORAL:                       # seed any missing foundation at neutral
+            moral.setdefault(m, 0.0)
     return personality
 
 
