@@ -1,34 +1,46 @@
-"""CHARACTER: the values, moral outlook, and habits a person accumulates from experience.
+"""CHARACTER: the values, moral outlook, beliefs, and habits a person accumulates.
 
 Where ``temperament`` is the innate OCEAN baseline a character is *born* with, CHARACTER
-is what they *become* by living -- modeled as:
+is what they *become* by living:
 
   * values  -- the ten Schwartz basic values (``config.VALUES``),
   * moral   -- the six Moral Foundations / moral outlook (``config.MORAL``),
+  * beliefs -- open-ended propositions they come to hold (``beliefs.py``),
   * habits  -- the recurring experiences they fall into.
 
-Values and moral foundations both form from experience with the SAME diminishing-returns
-dynamics as the traits (``updater.apply_diminishing``); a recurring experience (counted by
-``memory.recurrence``) that crosses ``config.HABIT_MIN_RECURRENCE`` becomes a named habit.
+Values and moral foundations form by the SAME diminishing-returns dynamics as the traits
+(``updater.apply_diminishing``). Beliefs are an open store: the LLM extracts propositions
+from each experience and their conviction accumulates with the same diminishing returns;
+experiences logged while the LLM is offline are turned into beliefs later by ``form_beliefs``
+(a reflection pass over the memory backlog, tracked by ``character["beliefs_reviewed"]``).
+A recurring experience (``memory.recurrence``) past ``config.HABIT_MIN_RECURRENCE`` becomes
+a named habit.
 
-State lives in ``personality["character"] = {"values": {...}, "moral": {...},
-"habits": [...]}`` and persists with the rest of the character. Values and foundations
-start at 0 -- earned, not innate -- which is exactly what separates CHARACTER (experience)
-from TEMPERAMENT (biology).
+State lives in ``personality["character"]`` and persists with the rest of the character.
+Values/foundations start at 0 and beliefs at none -- earned, not innate -- which is exactly
+what separates CHARACTER (experience) from TEMPERAMENT (biology).
 """
+
+import logging
+import re
 
 from config import (
     VALUES, VALUES_NAMES, VALUES_HIGHER_ORDER, MORAL, MORAL_NAMES,
-    HABIT_MIN_RECURRENCE,
+    HABIT_MIN_RECURRENCE, LLM_FORMATION_RATE, BELIEF_SIM_THRESHOLD, BELIEF_BACKLOG_CAP,
 )
-from updater import apply_diminishing
+from updater import apply_diminishing, clamp
+from beliefs import extract_beliefs
+
+log = logging.getLogger("mindform.character")
 
 
 def default_character():
-    """A blank character layer: every value and foundation neutral (0), no habits yet."""
+    """A blank character layer: neutral values + foundations, no beliefs or habits."""
     return {
         "values": {v: 0.0 for v in VALUES},
         "moral": {m: 0.0 for m in MORAL},
+        "beliefs": [],
+        "beliefs_reviewed": 0,
         "habits": [],
     }
 
@@ -71,6 +83,84 @@ def note_habit(character, text, recurrence_count, *, min_recurrence=HABIT_MIN_RE
     return {**character, "habits": habits}
 
 
+# --- Beliefs: an open propositional store --------------------------------------
+def _belief_key(statement):
+    """Punctuation-insensitive, lowercased key for offline (text) belief dedup."""
+    return " ".join(re.sub(r"[^a-z0-9\s]", " ", (statement or "").lower()).split())
+
+
+def _cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _find_belief(beliefs, statement, embedder):
+    """The existing belief this statement matches, or None. Embedding-similarity when an
+    ``embedder`` (encoder) is available; punctuation-insensitive text match otherwise."""
+    if not beliefs:
+        return None
+    if embedder is None:
+        key = _belief_key(statement)
+        return next((b for b in beliefs if _belief_key(b.get("statement", "")) == key), None)
+    target = embedder(statement)
+    best, best_sim = None, 0.0
+    for belief in beliefs:
+        sim = _cosine(target, embedder(belief.get("statement", "")))
+        if sim > best_sim:
+            best, best_sim = belief, sim
+    return best if best_sim >= BELIEF_SIM_THRESHOLD else None
+
+
+def update_beliefs(character, extracted, embedder=None):
+    """Merge extracted ``{statement, confidence}`` beliefs into the store.
+
+    A new statement is added; a matching one is reinforced. ``confidence`` is the per-
+    occurrence delta in [-1, 1]; conviction accumulates with the SAME diminishing returns
+    as the traits/values (scaled by ``LLM_FORMATION_RATE``). Returns a new character.
+    """
+    beliefs = [dict(b) for b in character.get("beliefs") or []]
+    for item in extracted or []:
+        statement = (item.get("statement") or "").strip()
+        if not statement:
+            continue
+        push = clamp(LLM_FORMATION_RATE * float(item.get("confidence", 0.0)))
+        match = _find_belief(beliefs, statement, embedder)
+        if match is not None:
+            match["confidence"] = clamp(match["confidence"] + push * (1 - abs(match["confidence"])))
+            match["count"] = match.get("count", 0) + 1
+        else:
+            beliefs.append({"statement": statement, "confidence": clamp(push), "count": 1})
+    return {**character, "beliefs": beliefs}
+
+
+def form_beliefs(character, memories, embedder=None):
+    """Turn unreviewed memories into beliefs (the reflection pass).
+
+    Walks ``memories[beliefs_reviewed:]`` (capped at ``BELIEF_BACKLOG_CAP`` per call),
+    extracting beliefs from each text and merging them, then advances the
+    ``beliefs_reviewed`` watermark over only what it processed -- so experiences logged
+    while the LLM was unavailable are picked up by a later pass instead of being lost.
+    A no-op (and the watermark is left untouched) when the LLM is unavailable.
+    """
+    reviewed = character.get("beliefs_reviewed", 0)
+    backlog = (memories or [])[reviewed: reviewed + BELIEF_BACKLOG_CAP]
+    processed = reviewed
+    for memory in backlog:
+        try:
+            extracted, _ = extract_beliefs(memory.get("text", ""))
+        except Exception as exc:        # no LLM / failure -> leave the rest for later
+            log.info("belief extraction unavailable (%s); leaving backlog", exc)
+            break
+        character = update_beliefs(character, extracted, embedder)
+        processed += 1
+    if processed != reviewed:
+        character = {**character, "beliefs_reviewed": processed}
+    return character
+
+
+# --- Read-outs -----------------------------------------------------------------
 def higher_order(values):
     """Roll the ten values up onto Schwartz's four higher-order poles (weighted mean)."""
     out = {}
@@ -94,6 +184,12 @@ def read_moral(character):
     moral = character.get("moral") or {}
     ordered = sorted(MORAL, key=lambda m: -abs(moral.get(m, 0.0)))
     return {MORAL_NAMES[m]: moral.get(m, 0.0) for m in ordered}
+
+
+def read_beliefs(character):
+    """The character's beliefs, strongest conviction first."""
+    beliefs = character.get("beliefs") or []
+    return sorted(beliefs, key=lambda b: -abs(b.get("confidence", 0.0)))
 
 
 def dominant_value(character):

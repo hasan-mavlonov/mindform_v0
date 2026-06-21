@@ -19,7 +19,8 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
      -> CHARACTER: the same experience pushes the ten Schwartz values AND the six
           Moral Foundations (values.py / moral.py: LLM delta x LLM_FORMATION_RATE [primary];
           impact + VALUES_M / MORAL_M [fallback]) -> same diminishing-returns update
-          (character.py); recurring experiences settle into habits
+          (character.py); the LLM also extracts open beliefs (beliefs.py -> form_beliefs,
+          deduped, offline-deferred via memory); recurring experiences settle into habits
           (memory.recurrence -> character.note_habit)
      -> persist + memory   (personality.py, memory.py)
 ```
@@ -31,8 +32,9 @@ text -> MiniLM embedding (encoder.py)                  # recurrence + memory
   religion-raised, ...). The current `traits` are born at the baseline (x = mu).
 - **Character** (`character.py`): what a person *becomes* from experience -- the ten
   Schwartz **values** (`config.VALUES`) and the six Moral Foundations / **moral outlook**
-  (`config.MORAL`), each signed [-1,1], plus the **habits** they fall into. Unlike
-  temperament, these are **not** innate: they start at 0 and form.
+  (`config.MORAL`), each signed [-1,1], the open **beliefs** they come to hold
+  (`{statement, confidence}`), plus the **habits** they fall into. Unlike temperament,
+  these are **not** innate: they start empty / at 0 and form.
 - **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
   `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
   -- the causal ingredients of change, not a trait-expression reading.
@@ -94,8 +96,16 @@ Alongside the values, the same machinery forms the **moral outlook** -- Haidt's 
 Foundations (`config.MORAL`: care, fairness, loyalty, authority, sanctity, liberty), each
 signed [-1,1] and formed by `moral.moral_push_from_text` (LLM primary, `impact + MORAL_M`
 fallback) through the very same diminishing-returns update. The values say *what you prize*;
-the foundations say *what you treat as right or wrong*. (**Belief** -- a propositional store
--- is the remaining Character piece, coming next.)
+the foundations say *what you treat as right or wrong*.
+
+**Belief** is the open, propositional layer: from each experience the LLM (`beliefs.py`, no
+heuristic) extracts 0-2 general beliefs (`"hard work pays off"`) with a signed confidence
+delta; `character.update_beliefs` accumulates the conviction with the same diminishing
+returns, deduped by embedding similarity (or punctuation-insensitive text, offline). With no
+LLM, beliefs don't form live -- the experiences are saved to memory and turned into beliefs by
+a later reflection pass (`character.form_beliefs` walks the unreviewed memory backlog, tracked
+by the `beliefs_reviewed` watermark -- the Memory -> Character arrow). Values and foundations
+are fixed vectors; beliefs are an open list, like habits.
 
 **Habits** are the behavioral residue of repetition: when an experience recurs
 (`memory.recurrence`) past `config.HABIT_MIN_RECURRENCE`, `character.note_habit` records

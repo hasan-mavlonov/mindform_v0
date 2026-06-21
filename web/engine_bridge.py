@@ -27,7 +27,7 @@ from moral import moral_push_from_text
 from updater import update_personality
 from temperament import genesis, build_character
 from character import (
-    default_character, update_values, update_moral, note_habit,
+    default_character, update_values, update_moral, note_habit, form_beliefs,
     higher_order, dominant_value,
 )
 from personality import (
@@ -155,6 +155,17 @@ def _moral_push_rows(push):
     } for m in MORAL]
 
 
+def _belief_rows(character):
+    """The character's beliefs, strongest conviction first (for the UI)."""
+    beliefs = (character or {}).get("beliefs") or []
+    ordered = sorted(beliefs, key=lambda b: -abs(b.get("confidence", 0.0)))
+    return [{
+        "statement": b.get("statement", ""),
+        "confidence": float(b.get("confidence", 0.0)),
+        "count": int(b.get("count", 1)),
+    } for b in ordered]
+
+
 def _character_block(personality, *, push=None, source=None, reasoning="", moral_push=None):
     """CHARACTER snapshot: current values + moral outlook, the values' higher-order
     roll-up, the dominant value, the habits formed so far, and the pushes applied."""
@@ -165,6 +176,7 @@ def _character_block(personality, *, push=None, source=None, reasoning="", moral
         "dominant": dominant_value(character),
         "moral": _moral_rows(character),
         "moral_push": _moral_push_rows(moral_push),
+        "beliefs": _belief_rows(character),
         "habits": character.get("habits") or [],
         "push": _values_push_rows(push),
         "source": source,
@@ -296,6 +308,23 @@ def _recurrence_and_memory(text, appraisal, push, personality, name):
         return None
 
 
+def _form_beliefs(personality, char_name):
+    """Reflection pass: turn unreviewed memories into beliefs (guarded; no-op offline).
+
+    Reads the per-character memory log and the encoder for embedding dedup; if those deps
+    are absent there is no backlog to read, so the character is returned unchanged.
+    ``form_beliefs`` itself is a no-op when the LLM is unavailable, leaving the watermark.
+    """
+    character = personality.get("character") or default_character()
+    try:
+        from memory import load_memories
+        from encoder import encode_text
+        memories, embedder = load_memories(char_name), encode_text
+    except Exception:
+        memories, embedder = [], None
+    return form_beliefs(character, memories, embedder)
+
+
 def run_turn(name, message):
     """Feed one experience to a character and return the new state + a reply.
 
@@ -324,6 +353,10 @@ def run_turn(name, message):
     character = update_moral(character, moral_push)
     character = note_habit(character, text, (seen or 0) + 1)
     personality = {**personality, "character": character}
+
+    # BELIEF: the same experience (now in memory) -- and any offline backlog -- forms
+    # beliefs; a no-op without the LLM, which the next online turn catches up.
+    personality = {**personality, "character": _form_beliefs(personality, char_name)}
 
     save_character(personality)
 

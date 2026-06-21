@@ -7,15 +7,17 @@ deterministic heuristic path runs).
 from config import VALUES, MORAL, BASIS, HABIT_MIN_RECURRENCE
 import values as values_mod
 import moral as moral_mod
+import beliefs as beliefs_mod
 from character import (
-    default_character, update_values, update_moral, note_habit, higher_order,
-    read_values, read_moral, dominant_value,
+    default_character, update_values, update_moral, note_habit, form_beliefs,
+    update_beliefs, higher_order, read_values, read_moral, read_beliefs, dominant_value,
 )
 import personality as P
 from temperament import build_character
 
 values_mod.LLM_API_KEY = ""        # force the heuristic path -- no network in tests
 moral_mod.LLM_API_KEY = ""
+beliefs_mod.LLM_API_KEY = ""       # belief extraction is LLM-only -> off in tests
 
 results = []
 
@@ -182,6 +184,38 @@ check("snapshot character block includes the six moral foundations",
 mch = update_moral(default_character(), {"CARE": 0.6, "AUTH": -0.4})
 check("read_moral orders foundations by strength (strongest first)",
       list(read_moral(mch))[0] == "care / harm")
+
+
+# --- 11. Belief: an open propositional store ----------------------------------
+check("blank character has no beliefs and a zero review watermark",
+      blank.get("beliefs") == [] and blank.get("beliefs_reviewed") == 0)
+
+cb = update_beliefs(default_character(), [{"statement": "hard work pays off", "confidence": 0.5}])
+check("a new belief is recorded with diminishing-returns conviction",
+      len(cb["beliefs"]) == 1 and approx(cb["beliefs"][0]["confidence"], 0.15)
+      and cb["beliefs"][0]["count"] == 1)
+
+cb = update_beliefs(cb, [{"statement": "Hard work pays off!", "confidence": 0.5}])   # a dup
+check("a repeated belief reinforces (dedup, punctuation-insensitive) and bumps the count",
+      len(cb["beliefs"]) == 1 and cb["beliefs"][0]["count"] == 2
+      and cb["beliefs"][0]["confidence"] > 0.15)
+
+cb = update_beliefs(cb, [{"statement": "the world is dangerous", "confidence": -0.6}])
+check("a different belief is a separate entry; negative confidence is signed",
+      len(cb["beliefs"]) == 2 and any(b["confidence"] < 0 for b in cb["beliefs"]))
+check("read_beliefs orders by conviction strength (strongest first)",
+      read_beliefs(cb)[0]["statement"] == "hard work pays off")
+
+mems = [{"text": "I studied for months and still failed."}, {"text": "A stranger helped me."}]
+offline = form_beliefs(default_character(), mems)
+check("offline (no LLM), form_beliefs forms no beliefs and leaves the watermark at 0",
+      offline.get("beliefs") == [] and offline.get("beliefs_reviewed", 0) == 0)
+
+check("migration backfills the belief store + watermark onto an older save",
+      isinstance(fixed["character"].get("beliefs"), list)
+      and fixed["character"].get("beliefs_reviewed") == 0)
+check("snapshot character block includes the beliefs list",
+      "beliefs" in snap["character"])
 
 
 print("\nRESULTS:")

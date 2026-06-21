@@ -149,6 +149,18 @@ MORAL_M = {
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3
 
+# --- Character: Belief (an open, propositional store formed by experience) ---
+# Unlike the fixed values / moral vectors, beliefs are open-ended propositions the
+# character comes to hold: {statement, confidence in [-1, 1], count}. They are formed by
+# the LLM reading each experience (beliefs.extract_beliefs) -- there is no lexical
+# heuristic for open propositions -- and deduped by semantic similarity (encoder) or,
+# offline, by punctuation-insensitive text match. Experiences logged while the LLM is
+# unavailable stay in memory and are turned into beliefs by a later reflection pass
+# (character.form_beliefs walks the unreviewed memory backlog, tracked by the
+# character["beliefs_reviewed"] watermark).
+BELIEF_SIM_THRESHOLD = 0.62   # cosine over belief statements to count as "the same belief"
+BELIEF_BACKLOG_CAP = 10       # max unreviewed memories turned into beliefs per turn
+
 # --- LLM push (OpenAI-compatible): default Google Gemma 4 via the Gemini API ---
 # llm_impact.py asks an OpenAI-compatible chat model for a signed OCEAN delta in
 # [-1, 1] per trait, then push = clamp(LLM_FORMATION_RATE * delta); updater.py

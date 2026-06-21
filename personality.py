@@ -60,6 +60,8 @@ def _ensure_character(personality):
         personality["character"] = default_character()
     else:
         character.setdefault("habits", [])
+        character.setdefault("beliefs", [])
+        character.setdefault("beliefs_reviewed", 0)
         values = character.setdefault("values", {})
         for v in VALUES:                      # seed any missing value at neutral
             values.setdefault(v, 0.0)
