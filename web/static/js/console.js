@@ -46,6 +46,8 @@
     orb: null,
     pushBars: {},   // key -> { root, fill, val }
     traitBars: {},  // key -> { root, fill, ghost, val, glyph }
+    valueBars: {},  // Schwartz values:   key -> { root, fill, val }
+    moralBars: {},  // moral foundations: key -> { root, fill, val }
     reflTimer: null,
   };
 
@@ -241,6 +243,7 @@
     $("chat-scroll").innerHTML = "";
     buildPushBars(snap);
     buildTraitBars(snap);
+    buildCharacter(snap);
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
@@ -369,6 +372,111 @@
     });
   }
 
+  // ---- character: values, moral, beliefs, habits ----------------------------
+  // Values + moral are fixed signed bars (no baseline ghost) that fill from 0 as
+  // experience forms them; a magenta flash marks the ones this experience pushed.
+  function buildCharBars(hostId, rows, store, variant) {
+    const host = $(hostId);
+    host.innerHTML = "";
+    Object.keys(store).forEach((k) => delete store[k]);
+    (rows || []).forEach((r) => {
+      const root = elc("div", "cbar " + variant);
+      const top = elc("div", "cbar-top");
+      top.appendChild(elc("span", "cbar-name", r.label));
+      const val = elc("span", "cbar-val", fmt(r.value));
+      top.appendChild(val);
+      root.appendChild(top);
+      const track = elc("div", "cbar-track");
+      track.appendChild(elc("span", "cbar-zero"));
+      const fill = elc("span", "cbar-fill");
+      track.appendChild(fill);
+      root.appendChild(track);
+      host.appendChild(root);
+      store[r.key] = { root, fill, val };
+    });
+  }
+
+  function updateCharBars(rows, pushRows, store, flash) {
+    const pushByKey = {};
+    (pushRows || []).forEach((p) => { pushByKey[p.key] = p.value; });
+    (rows || []).forEach((r) => {
+      const b = store[r.key];
+      if (!b) return;
+      const f = centerFill(r.value);
+      b.fill.style.left = f.left + "%";
+      b.fill.style.width = f.width + "%";
+      b.val.textContent = fmt(r.value);
+      if (flash && Math.abs(pushByKey[r.key] || 0) > 0.001) {
+        b.root.classList.remove("is-flash");
+        void b.root.offsetWidth;            // restart the animation
+        b.root.classList.add("is-flash");
+      }
+    });
+  }
+
+  function renderBeliefs(snap, prev) {
+    const host = $("belief-list");
+    host.innerHTML = "";
+    const beliefs = (snap.character && snap.character.beliefs) || [];
+    if (!beliefs.length) {
+      host.appendChild(elc("p", "char-empty",
+        "None yet — beliefs form as the model reads experiences."));
+      return;
+    }
+    const prevByStmt = {};
+    if (prev && prev.character && prev.character.beliefs) {
+      prev.character.beliefs.forEach((b) => { prevByStmt[b.statement] = b; });
+    }
+    beliefs.slice(0, 8).forEach((b) => {
+      const item = elc("div", "belief-item");
+      const prevB = prevByStmt[b.statement];
+      if (!prevB || Math.abs((prevB.confidence || 0) - b.confidence) > 0.001) {
+        item.classList.add("is-new");           // new or moved this turn
+      }
+      const conf = elc("span", "belief-conf", fmt(b.confidence));
+      if (b.confidence < 0) conf.classList.add("neg");
+      item.appendChild(conf);
+      item.appendChild(elc("span", "belief-text", b.statement));
+      if (b.count > 1) item.appendChild(elc("span", "belief-count", "×" + b.count));
+      host.appendChild(item);
+    });
+  }
+
+  function renderHabits(snap) {
+    const host = $("habit-list");
+    host.innerHTML = "";
+    const habits = (snap.character && snap.character.habits) || [];
+    if (!habits.length) {
+      host.appendChild(elc("p", "char-empty",
+        "None yet — a habit forms when an experience recurs."));
+      return;
+    }
+    habits.forEach((h) => {
+      const chip = elc("span", "habit-chip");
+      chip.appendChild(elc("span", "habit-text", h.text));
+      chip.appendChild(elc("span", "habit-x", "×" + h.count));
+      host.appendChild(chip);
+    });
+  }
+
+  function buildCharacter(snap) {
+    const c = snap.character || {};
+    buildCharBars("value-bars", c.values, App.valueBars, "cbar--value");
+    buildCharBars("moral-bars", c.moral, App.moralBars, "cbar--moral");
+    updateCharBars(c.values, null, App.valueBars, false);
+    updateCharBars(c.moral, null, App.moralBars, false);
+    renderBeliefs(snap, null);
+    renderHabits(snap);
+  }
+
+  function updateCharacter(snap, prev) {
+    const c = snap.character || {};
+    updateCharBars(c.values, c.push, App.valueBars, true);
+    updateCharBars(c.moral, c.moral_push, App.moralBars, true);
+    renderBeliefs(snap, prev);
+    renderHabits(snap);
+  }
+
   function renderMood(snap) {
     const a = snap.appraisal || { valence: 0, intensity: 0, novelty: 0 };
     const val = centerFill(a.valence || 0);
@@ -466,6 +574,7 @@
       updatePushBars(snap, true);           // magenta flash: the push just landed
       const moved = snap.formation ? snap.formation.key : biggestMove(prev, snap);
       updateTraitBars(snap, moved);         // violet bars ease to new values
+      updateCharacter(snap, prev);          // values / moral / beliefs / habits
       renderMood(snap);
       renderHeader(snap);
       syncOrb(snap, true);
