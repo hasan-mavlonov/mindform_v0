@@ -20,9 +20,9 @@ llm_impact.py.
 
 import logging
 
-from config import BASIS, DEFAULT_TAU, LLM_LABEL
-from llm import complete_json
-from character import default_character
+from core.config import BASIS, DEFAULT_TAU, LLM_LABEL
+from core.llm import complete_json
+from nodes.character import default_character
 
 log = logging.getLogger("mindform.genesis")
 

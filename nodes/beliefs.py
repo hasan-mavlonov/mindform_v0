@@ -15,8 +15,8 @@ simply waits -- the experiences are safe in memory until the model is back.
 
 import logging
 
-from config import LLM_LABEL
-from llm import complete_json
+from core.config import LLM_LABEL
+from core.llm import complete_json
 
 log = logging.getLogger("mindform.beliefs")
 

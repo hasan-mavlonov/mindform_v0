@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets import load_dataset
 
-from appraisal import _heuristic_appraise
+from core.appraisal import _heuristic_appraise
 
 OUT = "data/appraisal_dataset.jsonl"
 

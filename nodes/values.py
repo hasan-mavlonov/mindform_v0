@@ -22,10 +22,10 @@ clean, independently swappable node (mirroring the diagram).
 
 import logging
 
-from config import VALUES, VALUES_M, LLM_FORMATION_RATE, LLM_LABEL
-from llm import complete_json
-from appraisal import appraise
-from impact import impact, clamp
+from core.config import VALUES, VALUES_M, LLM_FORMATION_RATE, LLM_LABEL
+from core.llm import complete_json
+from core.appraisal import appraise
+from core.impact import impact, clamp
 
 log = logging.getLogger("mindform.values")
 

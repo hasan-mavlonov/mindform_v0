@@ -1,3 +1,4 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """Acceptance test: experience forms the traits, and temperament reins them in.
 
 Dependency-free (no torch / numpy / sentence-transformers). Demonstrates the model:
@@ -14,10 +15,10 @@ Dependency-free (no torch / numpy / sentence-transformers). Demonstrates the mod
 Run: python3 acceptance_test.py
 """
 
-from personality import default_personality
-from appraisal import appraise
-from impact import impact
-from updater import update_personality
+from core.personality import default_personality
+from core.appraisal import appraise
+from core.impact import impact
+from core.updater import update_personality
 
 
 def trait(personality, dim):

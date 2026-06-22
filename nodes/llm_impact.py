@@ -23,10 +23,10 @@ Configure by copying ``.env.example`` to ``.env`` and setting ``GEMINI_API_KEY``
 
 import logging
 
-from config import BASIS, LLM_FORMATION_RATE, LLM_LABEL
-from llm import complete_json
-from appraisal import appraise
-from impact import impact, clamp
+from core.config import BASIS, LLM_FORMATION_RATE, LLM_LABEL
+from core.llm import complete_json
+from core.appraisal import appraise
+from core.impact import impact, clamp
 
 log = logging.getLogger("mindform.llm")
 

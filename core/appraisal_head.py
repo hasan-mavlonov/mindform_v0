@@ -11,8 +11,8 @@ import os
 import torch
 import torch.nn as nn
 
-from encoder import encode_text, EMBEDDING_DIM
-from config import APPRAISAL_DIMS, APPRAISAL_SCHEMA
+from core.encoder import encode_text, EMBEDDING_DIM
+from core.config import APPRAISAL_DIMS, APPRAISAL_SCHEMA
 
 HEAD_PATH = "appraisal_head.pth"
 OUT_KEYS = list(APPRAISAL_DIMS)

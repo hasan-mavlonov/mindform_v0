@@ -24,7 +24,7 @@ def appraise(text):
 def _try_head():
     """Return the learned head's predict fn, or None if unavailable/untrained."""
     try:
-        from appraisal_head import predict_appraisal, load_head
+        from core.appraisal_head import predict_appraisal, load_head
         return predict_appraisal if load_head() is not None else None
     except Exception:
         return None

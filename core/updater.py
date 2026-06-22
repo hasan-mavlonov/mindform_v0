@@ -20,7 +20,7 @@ two characters with the same experiences but different temperaments diverge.
 temperament pull/drift.
 """
 
-from config import TEMPERAMENT_DRIFT
+from core.config import TEMPERAMENT_DRIFT
 
 
 def clamp(value, minimum=-1.0, maximum=1.0):

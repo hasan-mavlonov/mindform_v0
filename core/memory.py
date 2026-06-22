@@ -10,8 +10,8 @@ import os
 
 import numpy as np
 
-from config import RECURRENCE_THRESHOLD
-from personality import read_traits, _slug, CHARACTERS_DIR
+from core.config import RECURRENCE_THRESHOLD
+from core.personality import read_traits, _slug, CHARACTERS_DIR
 
 DEFAULT_MEMORY_FILE = "data/memories.json"
 

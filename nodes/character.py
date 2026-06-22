@@ -24,12 +24,12 @@ what separates CHARACTER (experience) from TEMPERAMENT (biology).
 import logging
 import re
 
-from config import (
+from core.config import (
     VALUES, VALUES_NAMES, VALUES_HIGHER_ORDER, MORAL, MORAL_NAMES,
     HABIT_MIN_RECURRENCE, LLM_FORMATION_RATE, BELIEF_SIM_THRESHOLD, BELIEF_BACKLOG_CAP,
 )
-from updater import apply_diminishing, clamp
-from beliefs import extract_beliefs
+from core.updater import apply_diminishing, clamp
+from nodes.beliefs import extract_beliefs
 
 log = logging.getLogger("mindform.character")
 

@@ -12,22 +12,22 @@ Commands (while talking):
   /exit           -> quit
 """
 
-from config import IDENTITY_FIELDS, TRAIT_QUESTIONS, TRAIT_LEVELS
-from personality import (
+from core.config import IDENTITY_FIELDS, TRAIT_QUESTIONS, TRAIT_LEVELS
+from core.personality import (
     save_character, list_characters, read_traits, read_temperament,
 )
-from temperament import build_character, genesis
-from encoder import encode_text
-from appraisal import appraise
-from llm_impact import push_from_text
-from values import values_push_from_text
-from moral import moral_push_from_text
-from updater import update_personality
-from character import (
+from nodes.temperament import build_character, genesis
+from core.encoder import encode_text
+from core.appraisal import appraise
+from nodes.llm_impact import push_from_text
+from nodes.values import values_push_from_text
+from nodes.moral import moral_push_from_text
+from core.updater import update_personality
+from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     read_values, read_moral, read_beliefs,
 )
-from memory import create_memory, recurrence, load_memories
+from core.memory import create_memory, recurrence, load_memories
 
 
 def print_state(personality):

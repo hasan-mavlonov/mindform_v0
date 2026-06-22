@@ -165,9 +165,9 @@ path is unchanged.
 
 ## Run
 ```
-python acceptance_test.py                                 # dependency-free: experience -> trait change
-python genesis_test.py                                    # dependency-free: bio -> distinct temperament
-python character_test.py                                  # dependency-free: experience -> values + habits
+python tests/acceptance_test.py                           # dependency-free: experience -> trait change
+python tests/genesis_test.py                              # dependency-free: bio -> distinct temperament
+python tests/character_test.py                            # dependency-free: experience -> values + habits
 pip install -r requirements.txt                           # encoder + DeepSeek client
 cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
 python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character (CLI)
@@ -175,3 +175,17 @@ python interactive.py                                     # roster menu (use exi
 python simulation.py                                      # full pipeline (encoder in the loop)
 python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
 ```
+
+## Layout
+```
+core/    shared kernel: config, llm, encoder, appraisal (+ _head), impact, updater, memory, personality
+nodes/   formation:     temperament, llm_impact (trait push), character, values, moral, beliefs
+web/     the console:   server, engine_bridge, reply, static/ (UI)
+tests/   dependency-free behaviour checks
+root     entry scripts: console.py, interactive.py, simulation.py, genesis.py
+```
+Modules import across the packages by path (`from core.config import ...`,
+`from nodes.character import ...`); the entry scripts stay at the root so
+`python console.py` / `python interactive.py` run unchanged. The split is by
+*layer* (shared kernel vs. formation nodes), not strictly by diagram box, because
+every node leans on the same kernel.
