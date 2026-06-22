@@ -1,19 +1,20 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """Character formation checks: Schwartz values form from experience; habits recur.
 
 Run with: python character_test.py   (no network -- the LLM key is forced off so the
 deterministic heuristic path runs).
 """
 
-from config import VALUES, MORAL, BASIS, HABIT_MIN_RECURRENCE
-import values as values_mod
-import moral as moral_mod
-import llm as llm_mod
-from character import (
+from core.config import VALUES, MORAL, BASIS, HABIT_MIN_RECURRENCE
+import nodes.values as values_mod
+import nodes.moral as moral_mod
+import core.llm as llm_mod
+from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     update_beliefs, higher_order, read_values, read_moral, read_beliefs, dominant_value,
 )
-import personality as P
-from temperament import build_character
+import core.personality as P
+from nodes.temperament import build_character
 
 llm_mod.LLM_API_KEY = ""           # force every formation call onto its heuristic in tests
 

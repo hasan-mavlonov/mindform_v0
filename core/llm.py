@@ -19,7 +19,7 @@ case Gemma's ``<thought>`` causes.
 
 import logging
 
-from config import LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, parse_json_object
+from core.config import LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, parse_json_object
 
 log = logging.getLogger("mindform.llm")
 

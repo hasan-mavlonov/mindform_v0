@@ -9,12 +9,12 @@
 Run with: python simulation.py
 """
 
-from encoder import encode_text
-from personality import load_personality, save_personality, read_traits
-from appraisal import appraise
-from llm_impact import push_from_text
-from updater import update_personality
-from memory import create_memory, recurrence
+from core.encoder import encode_text
+from core.personality import load_personality, save_personality, read_traits
+from core.appraisal import appraise
+from nodes.llm_impact import push_from_text
+from core.updater import update_personality
+from core.memory import create_memory, recurrence
 from response import generate_response
 
 

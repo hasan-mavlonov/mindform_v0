@@ -15,9 +15,9 @@ runs with no network.
 
 import sys
 
-from config import BASIS, BASIS_NAMES
-from temperament import genesis
-from personality import save_personality
+from core.config import BASIS, BASIS_NAMES
+from nodes.temperament import genesis
+from core.personality import save_personality
 
 
 def _print_character(personality, source):

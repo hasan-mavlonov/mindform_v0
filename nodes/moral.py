@@ -16,10 +16,10 @@ values formation, never hard-depends on the network.
 
 import logging
 
-from config import MORAL, MORAL_M, LLM_FORMATION_RATE, LLM_LABEL
-from llm import complete_json
-from appraisal import appraise
-from impact import impact, clamp
+from core.config import MORAL, MORAL_M, LLM_FORMATION_RATE, LLM_LABEL
+from core.llm import complete_json
+from core.appraisal import appraise
+from core.impact import impact, clamp
 
 log = logging.getLogger("mindform.moral")
 

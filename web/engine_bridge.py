@@ -16,21 +16,21 @@ the "seen before" recurrence count and the persisted memory log.
 
 import logging
 
-from config import (
+from core.config import (
     BASIS, BASIS_NAMES, TRAIT_QUESTIONS, TRAIT_LEVELS, IDENTITY_FIELDS,
     APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES, MORAL, MORAL_NAMES,
 )
-from appraisal import appraise
-from llm_impact import push_from_text
-from values import values_push_from_text
-from moral import moral_push_from_text
-from updater import update_personality
-from temperament import genesis, build_character
-from character import (
+from core.appraisal import appraise
+from nodes.llm_impact import push_from_text
+from nodes.values import values_push_from_text
+from nodes.moral import moral_push_from_text
+from core.updater import update_personality
+from nodes.temperament import genesis, build_character
+from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     higher_order, dominant_value,
 )
-from personality import (
+from core.personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
 )
@@ -293,8 +293,8 @@ def _recurrence_and_memory(text, appraisal, push, personality, name):
     persist the memory log this turn.
     """
     try:
-        from encoder import encode_text          # heavy: sentence-transformers
-        from memory import create_memory, recurrence  # heavy: numpy
+        from core.encoder import encode_text          # heavy: sentence-transformers
+        from core.memory import create_memory, recurrence  # heavy: numpy
     except Exception as exc:                       # deps absent -> skip cleanly
         log.info("memory/encoder unavailable (%s); skipping recurrence", exc)
         return None
@@ -317,8 +317,8 @@ def _form_beliefs(personality, char_name):
     """
     character = personality.get("character") or default_character()
     try:
-        from memory import load_memories
-        from encoder import encode_text
+        from core.memory import load_memories
+        from core.encoder import encode_text
         memories, embedder = load_memories(char_name), encode_text
     except Exception:
         memories, embedder = [], None

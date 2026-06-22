@@ -1,3 +1,4 @@
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """Genesis / character-creation acceptance test -- dependency-free.
 
 Demonstrates the temperament seed and character authoring:
@@ -18,15 +19,15 @@ Run: python3 genesis_test.py
 
 import tempfile
 
-import personality as P
-from config import BASIS, DEFAULT_TAU
-from temperament import genesis, create_character, build_character
-from personality import default_personality
-from appraisal import appraise
-from impact import impact
-from updater import update_personality
+import core.personality as P
+from core.config import BASIS, DEFAULT_TAU
+from nodes.temperament import genesis, create_character, build_character
+from core.personality import default_personality
+from core.appraisal import appraise
+from core.impact import impact
+from core.updater import update_personality
 
-import llm as llm_mod
+import core.llm as llm_mod
 llm_mod.LLM_API_KEY = ""        # force the heuristic seed -- no network in tests
 
 

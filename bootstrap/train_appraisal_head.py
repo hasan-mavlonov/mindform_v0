@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn as nn
 
-from encoder import encode_text
-from appraisal_head import AppraisalHead, OUT_KEYS, HEAD_PATH, squash
+from core.encoder import encode_text
+from core.appraisal_head import AppraisalHead, OUT_KEYS, HEAD_PATH, squash
 
 DATA = "data/appraisal_dataset.jsonl"
 

@@ -22,7 +22,7 @@ the reply works fully offline and never hard-depends on the network.
 
 import logging
 
-from config import (
+from core.config import (
     BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, strip_reasoning,
 )
 

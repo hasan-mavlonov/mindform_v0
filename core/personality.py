@@ -14,8 +14,8 @@ import json
 import os
 import re
 
-from config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL
-from character import default_character
+from core.config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL
+from nodes.character import default_character
 
 PERSONALITY_FILE = "data/personality.json"
 CHARACTERS_DIR = "data/characters"
