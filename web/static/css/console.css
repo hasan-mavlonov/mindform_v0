@@ -17,6 +17,7 @@
   --belief: #F0386B; --belief-soft: #FF6F94;
   --trait: #5B3FE0;
   --warm: #F5B341;
+  --moral: #1FA89A;
   --surface: #ffffff; --surface-2: #FBF8F2;
   --track: rgba(26,14,46,0.07);
   --serif: "Instrument Serif", Georgia, serif;
@@ -33,6 +34,7 @@
   --belief: #FF6F94; --belief-soft: #FF6F94;
   --trait: #9A7FFF;
   --warm: #F5B341;
+  --moral: #54D6C4;
   --surface: #14102A; --surface-2: #0F0A20;
   --track: rgba(242,234,214,0.08);
   color-scheme: dark;
@@ -208,6 +210,33 @@ p { margin: 0; }
 .cbar-pulse { position: absolute; inset: -4px; border: 1px solid var(--trait); border-radius: 5px;
   animation: traitRing 1.4s ease-out; pointer-events: none; }
 @keyframes traitRing { 0% { opacity: .9; transform: scale(.98); } 100% { opacity: 0; transform: scale(1.04); } }
+
+/* ---------- character: values (amber) + moral (teal), beliefs, habits ---------- */
+.bars--compact { gap: 11px; }
+.block-badge.char { background: color-mix(in srgb, var(--warm) 20%, transparent); color: var(--warm); }
+/* values + moral are formed, not innate -> no baseline ghost; they fill from center 0. */
+.cbar--value .cbar-val { color: var(--warm); }
+.cbar--value .cbar-fill { background: var(--warm); box-shadow: 0 0 10px -3px var(--warm);
+  transition: left .9s cubic-bezier(.4,0,.2,1), width .9s cubic-bezier(.4,0,.2,1); }
+.cbar--moral .cbar-val { color: var(--moral); }
+.cbar--moral .cbar-fill { background: var(--moral); box-shadow: 0 0 10px -3px var(--moral);
+  transition: left .9s cubic-bezier(.4,0,.2,1), width .9s cubic-bezier(.4,0,.2,1); }
+
+.belief-list { display: flex; flex-direction: column; gap: 9px; }
+.belief-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline;
+  padding: 8px 11px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-2); }
+.belief-item.is-new { animation: barIn .5s ease both; border-color: var(--belief); }
+.belief-conf { font-family: var(--mono); font-size: 11px; color: var(--warm); white-space: nowrap; }
+.belief-conf.neg { color: var(--muted); }
+.belief-text { font-family: var(--body); font-size: 14px; color: var(--ink-2); line-height: 1.35; }
+.belief-count { font-family: var(--mono); font-size: 9px; color: var(--muted); white-space: nowrap; }
+
+.habit-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.habit-chip { display: inline-flex; align-items: baseline; gap: 7px; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--hairline-2); background: var(--surface-2); }
+.habit-text { font-family: var(--body); font-size: 13px; color: var(--ink-2); }
+.habit-x { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+.char-empty { font-family: var(--body); font-style: italic; font-size: 13px; color: var(--muted-2); }
 
 /* scrollbars */
 .chat-scroll::-webkit-scrollbar, .state-col::-webkit-scrollbar, .start-scroll::-webkit-scrollbar { width: 8px; }
