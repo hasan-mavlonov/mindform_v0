@@ -22,10 +22,8 @@ clean, independently swappable node (mirroring the diagram).
 
 import logging
 
-from config import (
-    VALUES, VALUES_M, LLM_FORMATION_RATE, LLM_LABEL, LLM_MODEL, LLM_BASE_URL,
-    LLM_API_KEY, parse_json_object,
-)
+from config import VALUES, VALUES_M, LLM_FORMATION_RATE, LLM_LABEL
+from llm import complete_json
 from appraisal import appraise
 from impact import impact, clamp
 
@@ -102,23 +100,7 @@ def _llm_values_delta(text):
     key/package, network error, malformed JSON, missing/non-numeric value) so
     ``values_push_from_text`` can fall back to the heuristic.
     """
-    if not LLM_API_KEY:
-        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
-
-    from openai import OpenAI  # lazy: the heuristic fallback works without this package
-
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    completion = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": VALUES_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Experience:\n{text}"},
-        ],
-        temperature=0.2,
-        max_tokens=600,
-        timeout=30,
-    )
-    data = parse_json_object(completion.choices[0].message.content)
+    data = complete_json(VALUES_SYSTEM_PROMPT, f"Experience:\n{text}")
     delta = {dim: float(data[dim]) for dim in VALUES}  # KeyError / ValueError -> fallback
     delta["reasoning"] = str(data.get("reasoning", ""))
     return delta

@@ -20,10 +20,8 @@ llm_impact.py.
 
 import logging
 
-from config import (
-    BASIS, DEFAULT_TAU, LLM_LABEL, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY,
-    parse_json_object,
-)
+from config import BASIS, DEFAULT_TAU, LLM_LABEL
+from llm import complete_json
 from character import default_character
 
 log = logging.getLogger("mindform.genesis")
@@ -123,23 +121,7 @@ def _llm_seed(bio):
     Raises on any failure (missing key/package, network, malformed JSON, missing
     or non-numeric trait) so ``seed_from_bio`` can fall back to the heuristic.
     """
-    if not LLM_API_KEY:
-        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
-
-    from openai import OpenAI  # lazy: the heuristic fallback works without this package
-
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    completion = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": GENESIS_PROMPT},
-            {"role": "user", "content": f"Biography:\n{bio}"},
-        ],
-        temperature=0.3,
-        max_tokens=600,
-        timeout=30,
-    )
-    data = parse_json_object(completion.choices[0].message.content)
+    data = complete_json(GENESIS_PROMPT, f"Biography:\n{bio}", temperature=0.3)
     mu = {d: float(data["mu"][d]) for d in BASIS}      # KeyError / ValueError -> fallback
     tau = {d: float(data["tau"][d]) for d in BASIS}
     return {

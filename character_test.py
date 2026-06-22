@@ -7,7 +7,7 @@ deterministic heuristic path runs).
 from config import VALUES, MORAL, BASIS, HABIT_MIN_RECURRENCE
 import values as values_mod
 import moral as moral_mod
-import beliefs as beliefs_mod
+import llm as llm_mod
 from character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     update_beliefs, higher_order, read_values, read_moral, read_beliefs, dominant_value,
@@ -15,9 +15,7 @@ from character import (
 import personality as P
 from temperament import build_character
 
-values_mod.LLM_API_KEY = ""        # force the heuristic path -- no network in tests
-moral_mod.LLM_API_KEY = ""
-beliefs_mod.LLM_API_KEY = ""       # belief extraction is LLM-only -> off in tests
+llm_mod.LLM_API_KEY = ""           # force every formation call onto its heuristic in tests
 
 results = []
 
