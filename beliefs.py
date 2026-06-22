@@ -15,7 +15,8 @@ simply waits -- the experiences are safe in memory until the model is back.
 
 import logging
 
-from config import LLM_LABEL, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, parse_json_object
+from config import LLM_LABEL
+from llm import complete_json
 
 log = logging.getLogger("mindform.beliefs")
 
@@ -59,23 +60,7 @@ def extract_beliefs(text):
     ``{statement, confidence}``. Raises on any failure (no key/package, network, bad
     JSON) so ``character.form_beliefs`` can leave the experience for a later pass.
     """
-    if not LLM_API_KEY:
-        raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")
-
-    from openai import OpenAI  # lazy: belief formation simply waits when this is absent
-
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    completion = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": BELIEF_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Experience:\n{text}"},
-        ],
-        temperature=0.2,
-        max_tokens=500,
-        timeout=30,
-    )
-    data = parse_json_object(completion.choices[0].message.content)
+    data = complete_json(BELIEF_SYSTEM_PROMPT, f"Experience:\n{text}")
     out = []
     for item in (data.get("beliefs") or [])[:2]:
         statement = str(item.get("statement", "")).strip()

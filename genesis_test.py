@@ -26,6 +26,9 @@ from appraisal import appraise
 from impact import impact
 from updater import update_personality
 
+import llm as llm_mod
+llm_mod.LLM_API_KEY = ""        # force the heuristic seed -- no network in tests
+
 
 anxious_bio = "Aisha, a shy, anxious, sensitive poet, easily overwhelmed."
 bold_bio = "Marcus, a bold, outgoing, disciplined, calm athlete."
