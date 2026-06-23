@@ -238,6 +238,14 @@ p { margin: 0; }
 .habit-x { font-family: var(--mono); font-size: 9px; color: var(--muted); }
 .char-empty { font-family: var(--body); font-style: italic; font-size: 13px; color: var(--muted-2); }
 
+/* recalled memories: what this message brought up */
+.recall-list { display: flex; flex-direction: column; gap: 8px; }
+.recall-item { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline;
+  padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-2);
+  animation: barIn .4s ease both; }
+.recall-score { font-family: var(--mono); font-size: 10px; color: var(--trait); white-space: nowrap; }
+.recall-text { font-family: var(--body); font-size: 13.5px; color: var(--ink-2); line-height: 1.3; }
+
 /* scrollbars */
 .chat-scroll::-webkit-scrollbar, .state-col::-webkit-scrollbar, .start-scroll::-webkit-scrollbar { width: 8px; }
 .chat-scroll::-webkit-scrollbar-thumb, .state-col::-webkit-scrollbar-thumb,

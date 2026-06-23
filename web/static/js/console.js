@@ -247,6 +247,7 @@
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
+    renderRecall(snap);
     syncOrb(snap, false);
     if (systemLine) addMessage("system", systemLine);
     const lead = leadIn(snap);
@@ -477,6 +478,23 @@
     renderHabits(snap);
   }
 
+  function renderRecall(snap) {
+    const host = $("recall-list");
+    if (!host) return;
+    host.innerHTML = "";
+    const recalled = snap.recalled || [];
+    if (!recalled.length) {
+      host.appendChild(elc("p", "char-empty", "Nothing specific came to mind."));
+      return;
+    }
+    recalled.forEach((m) => {
+      const item = elc("div", "recall-item");
+      item.appendChild(elc("span", "recall-score", (m.score || 0).toFixed(2)));
+      item.appendChild(elc("span", "recall-text", m.text));
+      host.appendChild(item);
+    });
+  }
+
   function renderMood(snap) {
     const a = snap.appraisal || { valence: 0, intensity: 0, novelty: 0 };
     const val = centerFill(a.valence || 0);
@@ -575,6 +593,7 @@
       const moved = snap.formation ? snap.formation.key : biggestMove(prev, snap);
       updateTraitBars(snap, moved);         // violet bars ease to new values
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
+      renderRecall(snap);                   // the memories this message surfaced
       renderMood(snap);
       renderHeader(snap);
       syncOrb(snap, true);
