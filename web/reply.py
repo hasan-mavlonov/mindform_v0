@@ -35,7 +35,7 @@ _REPLY_SYSTEM = """You are {name}. Speak ONLY as yourself, out loud, in the firs
 Your personality right now (OCEAN traits, each -1..1, 0 = average) shapes HOW you
 talk -- your warmth or bluntness, your calm or your nerves. Never say the numbers,
 never break character:
-{traits}{identity}
+{traits}{identity}{memories}
 
 Reply to what the user says in ONE or TWO short spoken sentences. Output only the
 words you say -- no analysis, no explanation, no <thought> or <thinking> block, no
@@ -66,12 +66,22 @@ def _describe_identity(personality):
     return f"\n\nWho you are: {facts}" if facts else ""
 
 
+def _describe_memories(memories):
+    """Recalled past experiences for the prompt -- the character's own memory, to draw
+    on only if it fits. Empty string when nothing relevant was recalled."""
+    if not memories:
+        return ""
+    lines = "\n".join(f"- {m.get('text', '')}" for m in memories[:3])
+    return ("\n\nThings you actually remember that feel relevant here (your own past -- "
+            "use only if they fit, in your own voice; don't list them):\n" + lines)
+
+
 def _character_name(personality):
     name = ((personality.get("identity") or {}).get("name") or "").strip()
     return name or "yourself"
 
 
-def _llm_reply(personality, user_text):
+def _llm_reply(personality, user_text, memories=None):
     """Ask Gemma for an in-character line.
 
     gemma-4-31b-it writes its reasoning as a literal ``<thought>`` block in the
@@ -92,6 +102,7 @@ def _llm_reply(personality, user_text):
         name=_character_name(personality),
         traits=_describe_traits(personality),
         identity=_describe_identity(personality),
+        memories=_describe_memories(memories),
     )
     base = [{"role": "system", "content": system}] + _REPLY_SHOTS
 
@@ -183,10 +194,11 @@ def _rule_based_reply(personality, user_text):
     return lead.rstrip(" .") + " -- " + aside
 
 
-def generate_reply(personality, user_text):
-    """Best-available in-character reply. Never raises; never touches traits."""
+def generate_reply(personality, user_text, memories=None):
+    """Best-available in-character reply, optionally grounded in recalled memories.
+    Never raises; never touches traits."""
     try:
-        return _llm_reply(personality, user_text)
+        return _llm_reply(personality, user_text, memories)
     except Exception as exc:
         log.info("LLM reply unavailable (%s); using rule-based voice", exc)
         return _rule_based_reply(personality, user_text)

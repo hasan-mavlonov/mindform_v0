@@ -204,10 +204,16 @@ def _formation(before, after):
     }
 
 
+def _recalled_rows(recalled):
+    """The past memories this turn surfaced (text + relevance score), for the UI."""
+    return [{"text": m.get("text", ""), "score": float(m.get("score", 0.0))}
+            for m in (recalled or [])]
+
+
 def snapshot(personality, *, push=None, appraisal=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
-             moral_push=None):
+             moral_push=None, recalled=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -221,6 +227,7 @@ def snapshot(personality, *, push=None, appraisal=None, source=None,
         "source": source,
         "reasoning": reasoning or "",
         "seen": seen,
+        "recalled": _recalled_rows(recalled),
         "formation": formation,
         "dominant": _dominant(trait_rows),
         "character": _character_block(
@@ -286,26 +293,28 @@ def create_manual(identity, levels):
 
 # --- The talk loop: one experience -> personality update ---------------------
 def _recurrence_and_memory(text, appraisal, push, personality, name):
-    """Optional encoder + memory recurrence. Returns ``seen`` or ``None``.
+    """Optional encoder + memory step. Returns ``(seen, recalled)``.
 
-    Mirrors ``interactive.py`` but guarded: if sentence-transformers / numpy are
-    not installed, formation still works -- we just can't count recurrences or
-    persist the memory log this turn.
+    Mirrors ``interactive.py`` but guarded: if sentence-transformers / numpy are not
+    installed, formation still works -- we just can't count recurrences, recall, or
+    persist the memory log this turn (returns ``(None, [])``). Recall runs BEFORE the
+    current experience is stored, so a message never just recalls itself.
     """
     try:
         from core.encoder import encode_text          # heavy: sentence-transformers
-        from core.memory import create_memory, recurrence  # heavy: numpy
+        from core.memory import create_memory, recurrence, recall  # heavy: numpy
     except Exception as exc:                       # deps absent -> skip cleanly
-        log.info("memory/encoder unavailable (%s); skipping recurrence", exc)
-        return None
+        log.info("memory/encoder unavailable (%s); skipping recurrence/recall", exc)
+        return None, []
     try:
         embedding = encode_text(text)
         seen = recurrence(embedding, name=name)
+        recalled = recall(embedding, name=name)        # past only (not yet stored)
         create_memory(text, embedding, appraisal, push, personality, name=name)
-        return seen
+        return seen, recalled
     except Exception as exc:
         log.warning("recurrence/memory step failed (%s); continuing", exc)
-        return None
+        return None, []
 
 
 def _form_beliefs(personality, char_name):
@@ -345,7 +354,7 @@ def run_turn(name, message):
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
 
-    seen = _recurrence_and_memory(text, appraisal, push, personality, char_name)
+    seen, recalled = _recurrence_and_memory(text, appraisal, push, personality, char_name)
 
     # CHARACTER: the same experience forms the values and the moral outlook, and a
     # recurring one (seen before, this occurrence included) settles into a habit.
@@ -361,11 +370,11 @@ def run_turn(name, message):
     save_character(personality)
 
     formation = _formation(before_traits, personality)
-    reply = generate_reply(personality, text)
+    reply = generate_reply(personality, text, memories=recalled)
 
     return snapshot(
         personality, push=push, appraisal=appraisal, source=source,
         reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
-        values_reasoning=values_reasoning, moral_push=moral_push,
+        values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
     )

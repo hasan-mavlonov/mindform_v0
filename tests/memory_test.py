@@ -69,6 +69,21 @@ check("legacy log slimmed (embedding removed, text kept)",
       all("embedding" not in m for m in migrated) and migrated[0]["text"] == "x")
 check("recurrence works after migration", M.recurrence([1.0, 0.0, 0.0, 0.0], name=LEG) >= 1)
 
+# --- recall: top-k most relevant past memories (Slice 2) ----------------------
+RC = "Sage"
+M.create_memory("I love hiking in the mountains.", [1.0, 0.0, 0.0, 0.0], {}, {}, person(), name=RC)
+M.create_memory("My boss criticized my report.",    [0.0, 1.0, 0.0, 0.0], {}, {}, person(), name=RC)
+M.create_memory("I went hiking again this weekend.", [0.95, 0.05, 0.0, 0.0], {}, {}, person(), name=RC)
+
+hits = M.recall([1.0, 0.0, 0.0, 0.0], name=RC, k=2)
+check("recall returns at most k", len(hits) == 2)
+check("recall surfaces the relevant memories (hiking, not the boss)",
+      all("hiking" in h["text"] for h in hits))
+check("recall attaches a relevance score", "score" in hits[0] and hits[0]["score"] > 0.9)
+check("recall drops irrelevant memories (below min_score)",
+      M.recall([0.0, 0.0, 1.0, 0.0], name=RC, k=3) == [])
+check("recall on empty history is []", M.recall([1.0, 0.0, 0.0, 0.0], name="Nobody") == [])
+
 import shutil
 shutil.rmtree(tmp, ignore_errors=True)
 

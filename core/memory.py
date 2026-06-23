@@ -138,3 +138,31 @@ def recurrence(embedding, name=None):
     """How many of this character's past memories resemble this one."""
     sims = _similarities(embedding, load_embeddings(name))
     return int((sims >= RECURRENCE_THRESHOLD).sum())
+
+
+def recall(query_embedding, name=None, k=3, min_score=0.25):
+    """The k past memories most relevant to ``query_embedding`` (most similar first).
+
+    Returns up to ``k`` memory records (the slim text-log entries) each tagged with a
+    ``score`` (cosine), dropping anything below ``min_score`` so only genuinely related
+    experiences surface. Empty when there's no relevant history -- the same offline-safe
+    contract as ``recurrence`` (needs the sidecar + numpy). Call it BEFORE storing the
+    current experience so a message never just recalls itself.
+    """
+    matrix = load_embeddings(name)
+    if matrix.size == 0:
+        return []
+    sims = _similarities(query_embedding, matrix)
+    memories = load_memories(name)
+    n = min(len(memories), sims.shape[0])
+    if n == 0:
+        return []
+    out = []
+    for i in np.argsort(sims[:n])[::-1][:k]:        # top-k by similarity, descending
+        score = float(sims[int(i)])
+        if score < min_score:
+            break                                   # the rest score no higher
+        record = dict(memories[int(i)])
+        record["score"] = score
+        out.append(record)
+    return out
