@@ -19,6 +19,7 @@ from core.personality import (
 from nodes.temperament import build_character, genesis
 from core.encoder import encode_text
 from core.appraisal import appraise
+from nodes.cognition import interpret, lens
 from nodes.llm_impact import push_from_text
 from nodes.values import values_push_from_text
 from nodes.moral import moral_push_from_text
@@ -179,16 +180,17 @@ def run():
         # --- experience -> personality update ---
         name = (personality.get("identity") or {}).get("name")
         embedding = encode_text(text)
-        appraisal = appraise(text)
+        appraisal = interpret(appraise(text), personality)   # cognitive lens bends perception
+        view = lens(personality)
         seen = recurrence(embedding, name=name)
 
-        push, source, reasoning = push_from_text(text, appraisal)
+        push, source, reasoning = push_from_text(text, appraisal, lens=view)
         personality = update_personality(personality, push)
 
         # CHARACTER: the same experience forms the Schwartz values and the moral
         # outlook, and a recurring one (this occurrence included) settles into a habit.
-        values_push, _, _ = values_push_from_text(text, appraisal)
-        moral_push, _, _ = moral_push_from_text(text, appraisal)
+        values_push, _, _ = values_push_from_text(text, appraisal, lens=view)
+        moral_push, _, _ = moral_push_from_text(text, appraisal, lens=view)
         character = update_values(personality.get("character") or default_character(), values_push)
         character = update_moral(character, moral_push)
         character = note_habit(character, text, seen + 1)

@@ -248,6 +248,7 @@
     renderHeader(snap);
     renderMood(snap);
     renderRecall(snap);
+    renderLens(snap);
     syncOrb(snap, false);
     if (systemLine) addMessage("system", systemLine);
     const lead = leadIn(snap);
@@ -478,6 +479,14 @@
     renderHabits(snap);
   }
 
+  function renderLens(snap) {
+    const el = $("lens-line");
+    if (!el) return;
+    const lens = snap.lens || "";
+    el.textContent = lens ? "Through their eyes: " + lens : "";
+    el.style.display = lens ? "block" : "none";
+  }
+
   function renderRecall(snap) {
     const host = $("recall-list");
     if (!host) return;
@@ -594,6 +603,7 @@
       updateTraitBars(snap, moved);         // violet bars ease to new values
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
       renderRecall(snap);                   // the memories this message surfaced
+      renderLens(snap);                     // how they're reading the world now
       renderMood(snap);
       renderHeader(snap);
       syncOrb(snap, true);

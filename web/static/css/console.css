@@ -245,6 +245,8 @@ p { margin: 0; }
   animation: barIn .4s ease both; }
 .recall-score { font-family: var(--mono); font-size: 10px; color: var(--trait); white-space: nowrap; }
 .recall-text { font-family: var(--body); font-size: 13.5px; color: var(--ink-2); line-height: 1.3; }
+.lens-line { font-family: var(--body); font-style: italic; font-size: 12.5px; color: var(--muted-2);
+  text-align: center; line-height: 1.4; margin-top: 4px; }
 
 /* scrollbars */
 .chat-scroll::-webkit-scrollbar, .state-col::-webkit-scrollbar, .start-scroll::-webkit-scrollbar { width: 8px; }

@@ -283,6 +283,15 @@ RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experie
 DEFAULT_TAU = 0.30
 TEMPERAMENT_DRIFT = 0.02   # eta: baseline plasticity per experience (must stay << tau)
 
+# --- Cognitive Patterns (the interpretation lens) ---
+# How you think colours what you perceive: the same event reads differently depending on
+# the character's current traits. cognition.interpret() gently bends the appraisal (anxious
+# -> more threat + darker; open -> more novelty; agreeable -> warmer socially), and
+# cognition.lens() turns the same tilt into a one-line brief for the LLM push prompt. The
+# gain is small and clamped, so perception is tinted, not overwhelmed -- and temperament's
+# pull-back keeps the perceive -> form -> perceive loop from running away.
+COGNITION_GAIN = 0.15
+
 # --- Identity (immutable facts collected when a character is created) ---
 # (field_key, prompt_label), in the order the creation form asks for them. These
 # are stored verbatim in personality["identity"] and never drift. The separate

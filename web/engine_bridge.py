@@ -21,6 +21,7 @@ from core.config import (
     APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES, MORAL, MORAL_NAMES,
 )
 from core.appraisal import appraise
+from nodes.cognition import interpret, lens, read_lens
 from nodes.llm_impact import push_from_text
 from nodes.values import values_push_from_text
 from nodes.moral import moral_push_from_text
@@ -230,6 +231,7 @@ def snapshot(personality, *, push=None, appraisal=None, source=None,
         "recalled": _recalled_rows(recalled),
         "formation": formation,
         "dominant": _dominant(trait_rows),
+        "lens": read_lens(personality),
         "character": _character_block(
             personality, push=values_push, source=values_source,
             reasoning=values_reasoning, moral_push=moral_push,
@@ -346,10 +348,11 @@ def run_turn(name, message):
     personality = load_character(name)
     char_name = (personality.get("identity") or {}).get("name")
 
-    appraisal = appraise(text)
-    push, source, reasoning = push_from_text(text, appraisal)
-    values_push, values_source, values_reasoning = values_push_from_text(text, appraisal)
-    moral_push, _, _ = moral_push_from_text(text, appraisal)
+    appraisal = interpret(appraise(text), personality)   # cognitive lens bends perception
+    view = lens(personality)
+    push, source, reasoning = push_from_text(text, appraisal, lens=view)
+    values_push, values_source, values_reasoning = values_push_from_text(text, appraisal, lens=view)
+    moral_push, _, _ = moral_push_from_text(text, appraisal, lens=view)
 
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
