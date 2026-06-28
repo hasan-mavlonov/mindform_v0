@@ -291,6 +291,12 @@ TEMPERAMENT_DRIFT = 0.02   # eta: baseline plasticity per experience (must stay 
 # gain is small and clamped, so perception is tinted, not overwhelmed -- and temperament's
 # pull-back keeps the perceive -> form -> perceive loop from running away.
 COGNITION_GAIN = 0.15
+# Slice 2 -- memory/schema-driven interpretation: recalled similar past episodes pull the
+# reading toward how those *felt* (a learned expectation), and familiarity damps novelty.
+# The pull is toward a bounded target -- it asymptotes once the reading matches the memory,
+# so it can't run away -- and is scaled by how closely the situation is recognised, so a
+# faint match barely tints.
+MEMORY_GAIN = 0.20
 
 # --- Identity (immutable facts collected when a character is created) ---
 # (field_key, prompt_label), in the order the creation form asks for them. These

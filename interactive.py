@@ -28,7 +28,7 @@ from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     read_values, read_moral, read_beliefs,
 )
-from core.memory import create_memory, recurrence, load_memories
+from core.memory import create_memory, recurrence, recall, load_memories
 
 
 def print_state(personality):
@@ -180,9 +180,10 @@ def run():
         # --- experience -> personality update ---
         name = (personality.get("identity") or {}).get("name")
         embedding = encode_text(text)
-        appraisal = interpret(appraise(text), personality)   # cognitive lens bends perception
-        view = lens(personality)
         seen = recurrence(embedding, name=name)
+        recalled = recall(embedding, name=name)              # past only (before interpret)
+        appraisal = interpret(appraise(text), personality, recalled=recalled)  # traits + memory
+        view = lens(personality, recalled=recalled)
 
         push, source, reasoning = push_from_text(text, appraisal, lens=view)
         personality = update_personality(personality, push)
