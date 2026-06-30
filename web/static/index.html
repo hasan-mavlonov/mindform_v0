@@ -136,18 +136,29 @@
         <div id="refl-mount"></div>
       </div>
       <div class="mood-panel">
-        <div class="mood-cap">What the last message read as</div>
-        <div class="mood-meter">
-          <span class="mood-meter-l">Valence</span>
-          <span class="mood-meter-track"><span class="mood-meter-zero"></span><span class="mood-meter-fill t-warm" id="mood-valence"></span></span>
+        <div class="mood-cap">How they read it</div>
+        <div class="mood-legend">
+          <span class="ml-tick"></span>first read<span class="ml-sep"></span><span class="ml-bar"></span>through their eyes
         </div>
         <div class="mood-meter">
-          <span class="mood-meter-l">Intensity</span>
-          <span class="mood-meter-track"><span class="mood-meter-fill t-belief" id="mood-intensity"></span></span>
+          <span class="mood-meter-l">Valence</span>
+          <span class="mood-meter-track"><span class="mood-meter-zero"></span><span class="mood-meter-ghost" id="mood-valence-ghost"></span><span class="mood-meter-fill t-warm" id="mood-valence"></span></span>
+          <span class="mood-meter-val" id="mood-valence-val"></span>
+        </div>
+        <div class="mood-meter">
+          <span class="mood-meter-l">Threat</span>
+          <span class="mood-meter-track"><span class="mood-meter-zero"></span><span class="mood-meter-ghost" id="mood-threat-ghost"></span><span class="mood-meter-fill t-belief" id="mood-threat"></span></span>
+          <span class="mood-meter-val" id="mood-threat-val"></span>
         </div>
         <div class="mood-meter">
           <span class="mood-meter-l">Novelty</span>
-          <span class="mood-meter-track"><span class="mood-meter-fill t-belief" id="mood-novelty"></span></span>
+          <span class="mood-meter-track"><span class="mood-meter-ghost" id="mood-novelty-ghost"></span><span class="mood-meter-fill t-trait" id="mood-novelty"></span></span>
+          <span class="mood-meter-val" id="mood-novelty-val"></span>
+        </div>
+        <div class="mood-meter">
+          <span class="mood-meter-l">Intensity</span>
+          <span class="mood-meter-track"><span class="mood-meter-fill t-muted" id="mood-intensity"></span></span>
+          <span class="mood-meter-val" id="mood-intensity-val"></span>
         </div>
         <p class="lens-line" id="lens-line"></p>
       </div>

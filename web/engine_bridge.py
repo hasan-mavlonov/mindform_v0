@@ -211,7 +211,7 @@ def _recalled_rows(recalled):
             for m in (recalled or [])]
 
 
-def snapshot(personality, *, push=None, appraisal=None, source=None,
+def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
              moral_push=None, recalled=None):
@@ -225,6 +225,7 @@ def snapshot(personality, *, push=None, appraisal=None, source=None,
         "traits": trait_rows,
         "push": _push_rows(push),
         "appraisal": appraisal,
+        "appraisal_raw": appraisal_raw,
         "source": source,
         "reasoning": reasoning or "",
         "seen": seen,
@@ -365,7 +366,8 @@ def run_turn(name, message):
     # Look back BEFORE interpreting, so memory can colour how this experience is read.
     embedding, seen, recalled = _recall(text, char_name)
 
-    appraisal = interpret(appraise(text), personality, recalled=recalled)  # traits + memory
+    raw_appraisal = appraise(text)                                         # the base reading
+    appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
     view = lens(personality, recalled=recalled)
     push, source, reasoning = push_from_text(text, appraisal, lens=view)
     values_push, values_source, values_reasoning = values_push_from_text(text, appraisal, lens=view)
@@ -394,8 +396,8 @@ def run_turn(name, message):
     reply = generate_reply(personality, text, memories=recalled)
 
     return snapshot(
-        personality, push=push, appraisal=appraisal, source=source,
-        reasoning=reasoning, seen=seen, formation=formation, reply=reply,
+        personality, push=push, appraisal=appraisal, appraisal_raw=raw_appraisal,
+        source=source, reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
     )
