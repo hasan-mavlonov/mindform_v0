@@ -93,20 +93,21 @@ Return ONLY valid JSON, with no markdown and no extra text, in exactly this form
 """
 
 
-def _llm_values_delta(text):
+def _llm_values_delta(text, lens=""):
     """Ask the LLM for the signed Schwartz delta of one occurrence of ``text``.
 
     Returns ``{SD..UN: float, "reasoning": str}``. Raises on any failure (missing
     key/package, network error, malformed JSON, missing/non-numeric value) so
     ``values_push_from_text`` can fall back to the heuristic.
     """
-    data = complete_json(VALUES_SYSTEM_PROMPT, f"Experience:\n{text}")
+    user = f"Experience:\n{text}" + (f"\n\n{lens}" if lens else "")
+    data = complete_json(VALUES_SYSTEM_PROMPT, user)
     delta = {dim: float(data[dim]) for dim in VALUES}  # KeyError / ValueError -> fallback
     delta["reasoning"] = str(data.get("reasoning", ""))
     return delta
 
 
-def values_push_from_text(text, appraisal=None):
+def values_push_from_text(text, appraisal=None, lens=""):
     """Best-available signed per-value push for an experience.
 
     Mirrors ``llm_impact.push_from_text``: tries the LLM (``text -> Schwartz delta ->
@@ -117,7 +118,7 @@ def values_push_from_text(text, appraisal=None):
     fallback).
     """
     try:
-        delta = _llm_values_delta(text)
+        delta = _llm_values_delta(text, lens)
         push = {dim: clamp(LLM_FORMATION_RATE * delta[dim]) for dim in VALUES}
         return push, LLM_LABEL, delta["reasoning"]
     except Exception as exc:  # any failure -> graceful deterministic fallback

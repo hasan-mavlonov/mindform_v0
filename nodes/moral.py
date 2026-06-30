@@ -76,20 +76,21 @@ Return ONLY valid JSON, with no markdown and no extra text, in exactly this form
 """
 
 
-def _llm_moral_delta(text):
+def _llm_moral_delta(text, lens=""):
     """Ask the LLM for the signed Moral Foundations delta of one occurrence of ``text``.
 
     Returns ``{CARE..LIB: float, "reasoning": str}``. Raises on any failure (missing
     key/package, network error, malformed JSON, missing/non-numeric foundation) so
     ``moral_push_from_text`` can fall back to the heuristic.
     """
-    data = complete_json(MORAL_SYSTEM_PROMPT, f"Experience:\n{text}")
+    user = f"Experience:\n{text}" + (f"\n\n{lens}" if lens else "")
+    data = complete_json(MORAL_SYSTEM_PROMPT, user)
     delta = {dim: float(data[dim]) for dim in MORAL}  # KeyError / ValueError -> fallback
     delta["reasoning"] = str(data.get("reasoning", ""))
     return delta
 
 
-def moral_push_from_text(text, appraisal=None):
+def moral_push_from_text(text, appraisal=None, lens=""):
     """Best-available signed per-foundation push for an experience.
 
     Mirrors ``values.values_push_from_text``: tries the LLM (``text -> moral delta ->
@@ -99,7 +100,7 @@ def moral_push_from_text(text, appraisal=None):
     ``"heuristic"``, and ``reasoning`` is the model's note (empty on fallback).
     """
     try:
-        delta = _llm_moral_delta(text)
+        delta = _llm_moral_delta(text, lens)
         push = {dim: clamp(LLM_FORMATION_RATE * delta[dim]) for dim in MORAL}
         return push, LLM_LABEL, delta["reasoning"]
     except Exception as exc:  # any failure -> graceful deterministic fallback

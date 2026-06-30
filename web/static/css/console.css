@@ -154,14 +154,27 @@ p { margin: 0; }
   border-top: 1px solid var(--hairline); margin-top: 6px; }
 .mood-cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--muted-2); text-align: center; margin-bottom: 2px; }
-.mood-meter { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 12px; }
+.mood-legend { display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 9px; }
+.mood-legend .ml-tick { width: 2px; height: 9px; background: var(--ink-2); opacity: .55; border-radius: 2px; }
+.mood-legend .ml-bar { width: 12px; height: 5px; background: var(--trait); border-radius: 999px; }
+.mood-legend .ml-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--hairline-2); margin: 0 2px; }
+.mood-meter { display: grid; grid-template-columns: 72px 1fr 42px; align-items: center; gap: 10px; }
 .mood-meter-l { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); }
-.mood-meter-track { position: relative; height: 6px; background: var(--track); border-radius: 999px; overflow: hidden; }
+.mood-meter-track { position: relative; height: 7px; background: var(--track); border-radius: 999px; overflow: hidden; }
 .mood-meter-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-2); }
-.mood-meter-fill { position: absolute; top: 0; bottom: 0; border-radius: 999px; transition: width .6s cubic-bezier(.4,0,.2,1), left .6s cubic-bezier(.4,0,.2,1); }
+.mood-meter-ghost { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 2; background: var(--ink-2);
+  opacity: .55; border-radius: 2px; transform: translateX(-1px); transition: left .6s cubic-bezier(.4,0,.2,1); }
+.mood-meter-fill { position: absolute; top: 0; bottom: 0; z-index: 1; border-radius: 999px;
+  transition: width .6s cubic-bezier(.4,0,.2,1), left .6s cubic-bezier(.4,0,.2,1); }
 .mood-meter-fill.t-belief { background: var(--belief); }
 .mood-meter-fill.t-trait { background: var(--trait); }
 .mood-meter-fill.t-warm { background: var(--warm); }
+.mood-meter-fill.t-muted { background: var(--muted); opacity: .6; }
+.mood-meter-val { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: right;
+  white-space: nowrap; transition: color .3s; }
+.mood-meter-val.moved { color: var(--trait); }
 
 /* ---------- state column ---------- */
 .state-col { padding: 20px 22px; gap: 8px; overflow-y: auto; }
@@ -245,6 +258,8 @@ p { margin: 0; }
   animation: barIn .4s ease both; }
 .recall-score { font-family: var(--mono); font-size: 10px; color: var(--trait); white-space: nowrap; }
 .recall-text { font-family: var(--body); font-size: 13.5px; color: var(--ink-2); line-height: 1.3; }
+.lens-line { font-family: var(--body); font-style: italic; font-size: 12.5px; color: var(--muted-2);
+  text-align: center; line-height: 1.4; margin-top: 4px; }
 
 /* scrollbars */
 .chat-scroll::-webkit-scrollbar, .state-col::-webkit-scrollbar, .start-scroll::-webkit-scrollbar { width: 8px; }

@@ -35,6 +35,7 @@
     const p = pct(v);
     return v >= 0 ? { left: 50, width: p - 50 } : { left: p, width: 50 - p };
   }
+  const pct01 = (v) => clamp(v, 0, 1) * 100;   // unsigned [0,1] -> [0,100]
   // The push is small per experience; show it on a [-0.5, 0.5] visual scale so it
   // reads, while the exact number stays in the label.
   const PUSH_VIS = 2;
@@ -248,6 +249,7 @@
     renderHeader(snap);
     renderMood(snap);
     renderRecall(snap);
+    renderLens(snap);
     syncOrb(snap, false);
     if (systemLine) addMessage("system", systemLine);
     const lead = leadIn(snap);
@@ -478,6 +480,14 @@
     renderHabits(snap);
   }
 
+  function renderLens(snap) {
+    const el = $("lens-line");
+    if (!el) return;
+    const lens = snap.lens || "";
+    el.textContent = lens ? "Through their eyes: " + lens : "";
+    el.style.display = lens ? "block" : "none";
+  }
+
   function renderRecall(snap) {
     const host = $("recall-list");
     if (!host) return;
@@ -495,13 +505,49 @@
     });
   }
 
+  // The appraisal dimensions shown in the mood panel. valence/threat are signed
+  // (center-zero); novelty/intensity run 0..1. The lens bends valence/threat/novelty,
+  // so those carry a ghost tick at the *raw* reading (before the lens); intensity it
+  // leaves alone, so it has no tick.
+  const MOOD_METERS = [
+    { id: "valence",   field: "valence",          signed: true,  lens: true  },
+    { id: "threat",    field: "threat_challenge", signed: true,  lens: true  },
+    { id: "novelty",   field: "novelty",          signed: false, lens: true  },
+    { id: "intensity", field: "intensity",        signed: false, lens: false },
+  ];
+
+  function setMoodFill(el, value, signed) {
+    if (signed) {
+      const f = centerFill(value);
+      el.style.left = f.left + "%"; el.style.width = f.width + "%";
+    } else {
+      el.style.left = "0%"; el.style.width = pct01(value) + "%";
+    }
+  }
+
   function renderMood(snap) {
-    const a = snap.appraisal || { valence: 0, intensity: 0, novelty: 0 };
-    const val = centerFill(a.valence || 0);
-    const vEl = $("mood-valence");
-    vEl.style.left = val.left + "%"; vEl.style.width = val.width + "%";
-    $("mood-intensity").style.width = clamp(a.intensity || 0, 0, 1) * 100 + "%";
-    $("mood-novelty").style.width = clamp(a.novelty || 0, 0, 1) * 100 + "%";
+    const a = snap.appraisal || null;                  // interpreted (through their eyes)
+    const raw = snap.appraisal_raw || null;            // the base reading, before the lens
+    MOOD_METERS.forEach((m) => {
+      const fill = $("mood-" + m.id);
+      if (!fill) return;
+      const ghost = $("mood-" + m.id + "-ghost");
+      const valEl = $("mood-" + m.id + "-val");
+      const iv = a ? (a[m.field] || 0) : 0;
+      setMoodFill(fill, iv, m.signed);
+
+      const rv = (raw && m.lens) ? (raw[m.field] || 0) : null;   // raw, only where the lens acts
+      const moved = rv != null && Math.abs(iv - rv) > 0.02;
+      if (ghost) {
+        ghost.style.display = rv == null ? "none" : "";
+        if (rv != null) ghost.style.left = (m.signed ? pct(rv) : pct01(rv)) + "%";
+      }
+      if (valEl) {
+        valEl.textContent = a ? fmt(iv) : "";
+        valEl.className = "mood-meter-val" + (moved ? " moved" : "");
+        valEl.title = moved ? "the lens moved this " + fmt(iv - rv) : "";
+      }
+    });
   }
 
   function syncOrb(snap, fresh) {
@@ -594,6 +640,7 @@
       updateTraitBars(snap, moved);         // violet bars ease to new values
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
       renderRecall(snap);                   // the memories this message surfaced
+      renderLens(snap);                     // how they're reading the world now
       renderMood(snap);
       renderHeader(snap);
       syncOrb(snap, true);

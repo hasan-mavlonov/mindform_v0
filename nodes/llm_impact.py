@@ -106,7 +106,7 @@ Return ONLY valid JSON, with no markdown and no extra text, in exactly this form
 """
 
 
-def _llm_delta(text):
+def _llm_delta(text, lens=""):
     """Ask the LLM for the signed OCEAN delta of one occurrence of ``text``.
 
     Uses the configured OpenAI-compatible provider (Google Gemma 4 by default).
@@ -114,13 +114,14 @@ def _llm_delta(text):
     (missing key/package, network error, malformed JSON, missing/non-numeric
     trait) so ``push_from_text`` can fall back to the heuristic.
     """
-    data = complete_json(SYSTEM_PROMPT, f"Experience:\n{text}")
+    user = f"Experience:\n{text}" + (f"\n\n{lens}" if lens else "")
+    data = complete_json(SYSTEM_PROMPT, user)
     delta = {dim: float(data[dim]) for dim in BASIS}  # KeyError / ValueError -> fallback
     delta["reasoning"] = str(data.get("reasoning", ""))
     return delta
 
 
-def push_from_text(text, appraisal=None):
+def push_from_text(text, appraisal=None, lens=""):
     """Best-available signed per-trait push for an experience.
 
     Tries the LLM first (``text -> OCEAN delta -> push = clamp(rate * delta)``);
@@ -130,7 +131,7 @@ def push_from_text(text, appraisal=None):
     (empty on fallback).
     """
     try:
-        delta = _llm_delta(text)
+        delta = _llm_delta(text, lens)
         push = {dim: clamp(LLM_FORMATION_RATE * delta[dim]) for dim in BASIS}
         return push, LLM_LABEL, delta["reasoning"]
     except Exception as exc:  # any failure -> graceful deterministic fallback

@@ -21,6 +21,7 @@ from core.config import (
     APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES, MORAL, MORAL_NAMES,
 )
 from core.appraisal import appraise
+from nodes.cognition import interpret, lens, read_lens
 from nodes.llm_impact import push_from_text
 from nodes.values import values_push_from_text
 from nodes.moral import moral_push_from_text
@@ -210,7 +211,7 @@ def _recalled_rows(recalled):
             for m in (recalled or [])]
 
 
-def snapshot(personality, *, push=None, appraisal=None, source=None,
+def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
              moral_push=None, recalled=None):
@@ -224,12 +225,14 @@ def snapshot(personality, *, push=None, appraisal=None, source=None,
         "traits": trait_rows,
         "push": _push_rows(push),
         "appraisal": appraisal,
+        "appraisal_raw": appraisal_raw,
         "source": source,
         "reasoning": reasoning or "",
         "seen": seen,
         "recalled": _recalled_rows(recalled),
         "formation": formation,
         "dominant": _dominant(trait_rows),
+        "lens": read_lens(personality, recalled=recalled),
         "character": _character_block(
             personality, push=values_push, source=values_source,
             reasoning=values_reasoning, moral_push=moral_push,
@@ -292,29 +295,43 @@ def create_manual(identity, levels):
 
 
 # --- The talk loop: one experience -> personality update ---------------------
-def _recurrence_and_memory(text, appraisal, push, personality, name):
-    """Optional encoder + memory step. Returns ``(seen, recalled)``.
+def _recall(text, name):
+    """Encode the experience and look back, BEFORE it is stored. Returns
+    ``(embedding, seen, recalled)``.
 
-    Mirrors ``interactive.py`` but guarded: if sentence-transformers / numpy are not
-    installed, formation still works -- we just can't count recurrences, recall, or
-    persist the memory log this turn (returns ``(None, [])``). Recall runs BEFORE the
-    current experience is stored, so a message never just recalls itself.
+    Guarded: if sentence-transformers / numpy are absent, formation still works -- we just
+    can't count recurrences or recall similar episodes (returns ``(None, None, [])``).
+    Recall runs before the current experience is stored, so a message never just recalls
+    itself -- and crucially before ``interpret``, so memory can colour the reading.
     """
     try:
         from core.encoder import encode_text          # heavy: sentence-transformers
-        from core.memory import create_memory, recurrence, recall  # heavy: numpy
+        from core.memory import recurrence, recall     # heavy: numpy
     except Exception as exc:                       # deps absent -> skip cleanly
         log.info("memory/encoder unavailable (%s); skipping recurrence/recall", exc)
-        return None, []
+        return None, None, []
     try:
         embedding = encode_text(text)
-        seen = recurrence(embedding, name=name)
-        recalled = recall(embedding, name=name)        # past only (not yet stored)
-        create_memory(text, embedding, appraisal, push, personality, name=name)
-        return seen, recalled
+        return embedding, recurrence(embedding, name=name), recall(embedding, name=name)
     except Exception as exc:
-        log.warning("recurrence/memory step failed (%s); continuing", exc)
-        return None, []
+        log.warning("recall step failed (%s); continuing", exc)
+        return None, None, []
+
+
+def _store_memory(text, embedding, appraisal, push, personality, name):
+    """Persist this experience (log record + embedding sidecar) once it has formed.
+
+    No-op when the encoder/memory deps are absent (``embedding is None``). Stores the
+    *interpreted* appraisal -- what the character actually perceived -- so future recalls
+    rebuild the schema from how things felt to them, not from an abstract reading.
+    """
+    if embedding is None:
+        return
+    try:
+        from core.memory import create_memory          # heavy: numpy
+        create_memory(text, embedding, appraisal, push, personality, name=name)
+    except Exception as exc:
+        log.warning("memory store failed (%s); continuing", exc)
 
 
 def _form_beliefs(personality, char_name):
@@ -346,15 +363,21 @@ def run_turn(name, message):
     personality = load_character(name)
     char_name = (personality.get("identity") or {}).get("name")
 
-    appraisal = appraise(text)
-    push, source, reasoning = push_from_text(text, appraisal)
-    values_push, values_source, values_reasoning = values_push_from_text(text, appraisal)
-    moral_push, _, _ = moral_push_from_text(text, appraisal)
+    # Look back BEFORE interpreting, so memory can colour how this experience is read.
+    embedding, seen, recalled = _recall(text, char_name)
+
+    raw_appraisal = appraise(text)                                         # the base reading
+    appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
+    view = lens(personality, recalled=recalled)
+    push, source, reasoning = push_from_text(text, appraisal, lens=view)
+    values_push, values_source, values_reasoning = values_push_from_text(text, appraisal, lens=view)
+    moral_push, _, _ = moral_push_from_text(text, appraisal, lens=view)
 
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
 
-    seen, recalled = _recurrence_and_memory(text, appraisal, push, personality, char_name)
+    # Now that the experience has formed, commit it to memory (with the interpreted reading).
+    _store_memory(text, embedding, appraisal, push, personality, char_name)
 
     # CHARACTER: the same experience forms the values and the moral outlook, and a
     # recurring one (seen before, this occurrence included) settles into a habit.
@@ -373,8 +396,8 @@ def run_turn(name, message):
     reply = generate_reply(personality, text, memories=recalled)
 
     return snapshot(
-        personality, push=push, appraisal=appraisal, source=source,
-        reasoning=reasoning, seen=seen, formation=formation, reply=reply,
+        personality, push=push, appraisal=appraisal, appraisal_raw=raw_appraisal,
+        source=source, reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
     )

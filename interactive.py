@@ -19,6 +19,7 @@ from core.personality import (
 from nodes.temperament import build_character, genesis
 from core.encoder import encode_text
 from core.appraisal import appraise
+from nodes.cognition import interpret, lens
 from nodes.llm_impact import push_from_text
 from nodes.values import values_push_from_text
 from nodes.moral import moral_push_from_text
@@ -27,7 +28,7 @@ from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     read_values, read_moral, read_beliefs,
 )
-from core.memory import create_memory, recurrence, load_memories
+from core.memory import create_memory, recurrence, recall, load_memories
 
 
 def print_state(personality):
@@ -179,16 +180,18 @@ def run():
         # --- experience -> personality update ---
         name = (personality.get("identity") or {}).get("name")
         embedding = encode_text(text)
-        appraisal = appraise(text)
         seen = recurrence(embedding, name=name)
+        recalled = recall(embedding, name=name)              # past only (before interpret)
+        appraisal = interpret(appraise(text), personality, recalled=recalled)  # traits + memory
+        view = lens(personality, recalled=recalled)
 
-        push, source, reasoning = push_from_text(text, appraisal)
+        push, source, reasoning = push_from_text(text, appraisal, lens=view)
         personality = update_personality(personality, push)
 
         # CHARACTER: the same experience forms the Schwartz values and the moral
         # outlook, and a recurring one (this occurrence included) settles into a habit.
-        values_push, _, _ = values_push_from_text(text, appraisal)
-        moral_push, _, _ = moral_push_from_text(text, appraisal)
+        values_push, _, _ = values_push_from_text(text, appraisal, lens=view)
+        moral_push, _, _ = moral_push_from_text(text, appraisal, lens=view)
         character = update_values(personality.get("character") or default_character(), values_push)
         character = update_moral(character, moral_push)
         character = note_habit(character, text, seen + 1)
