@@ -508,12 +508,14 @@
   // The appraisal dimensions shown in the mood panel. valence/threat are signed
   // (center-zero); novelty/intensity run 0..1. The lens bends valence/threat/novelty,
   // so those carry a ghost tick at the *raw* reading (before the lens); intensity it
-  // leaves alone, so it has no tick.
+  // leaves alone, so it has no tick. The engine stores threat_challenge as
+  // -1 = threat/loss .. +1 = challenge/growth; the "Threat" meter negates it so the bar
+  // reads as threat LEVEL (right = more threatening), which is what the label implies.
   const MOOD_METERS = [
-    { id: "valence",   field: "valence",          signed: true,  lens: true  },
-    { id: "threat",    field: "threat_challenge", signed: true,  lens: true  },
-    { id: "novelty",   field: "novelty",          signed: false, lens: true  },
-    { id: "intensity", field: "intensity",        signed: false, lens: false },
+    { id: "valence",   field: "valence",          signed: true,  lens: true               },
+    { id: "threat",    field: "threat_challenge", signed: true,  lens: true, negate: true  },
+    { id: "novelty",   field: "novelty",          signed: false, lens: true               },
+    { id: "intensity", field: "intensity",        signed: false, lens: false              },
   ];
 
   function setMoodFill(el, value, signed) {
@@ -533,10 +535,11 @@
       if (!fill) return;
       const ghost = $("mood-" + m.id + "-ghost");
       const valEl = $("mood-" + m.id + "-val");
-      const iv = a ? (a[m.field] || 0) : 0;
+      const s = m.negate ? -1 : 1;                               // display sign (see MOOD_METERS)
+      const iv = a ? s * (a[m.field] || 0) : 0;
       setMoodFill(fill, iv, m.signed);
 
-      const rv = (raw && m.lens) ? (raw[m.field] || 0) : null;   // raw, only where the lens acts
+      const rv = (raw && m.lens) ? s * (raw[m.field] || 0) : null;   // raw, only where the lens acts
       const moved = rv != null && Math.abs(iv - rv) > 0.02;
       if (ghost) {
         ghost.style.display = rv == null ? "none" : "";

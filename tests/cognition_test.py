@@ -32,12 +32,13 @@ check("neutral character leaves the appraisal unchanged",
       and neutral["threat_challenge"] == raw["threat_challenge"]
       and neutral["novelty"] == raw["novelty"])
 
-# neuroticism: more perceived threat, darker valence
+# neuroticism: more perceived threat, darker valence. threat_challenge is signed
+# -1 = threat/loss, +1 = challenge/growth, so "more threat" = MORE NEGATIVE.
 anxious = interpret(raw, person(N=0.8))
-check("anxious reads more threat than neutral", anxious["threat_challenge"] > neutral["threat_challenge"])
+check("anxious reads more threat than neutral", anxious["threat_challenge"] < neutral["threat_challenge"])
 check("anxious reads a darker valence than neutral", anxious["valence"] < neutral["valence"])
 calm = interpret(raw, person(N=-0.8))
-check("calm reads less threat than neutral", calm["threat_challenge"] < neutral["threat_challenge"])
+check("calm reads less threat than neutral", calm["threat_challenge"] > neutral["threat_challenge"])
 
 # openness: more perceived novelty
 openp = interpret(raw, person(O=0.8))
@@ -93,10 +94,10 @@ check("same person + same event -> read differently by their past",
 check("memory pull stays between the raw reading and the memory (bounded)",
       -0.8 < dark["valence"] < base2["valence"])
 
-# threatening memories raise perceived threat
-scary = interpret(raw2, person(), recalled=[mem(threat=0.8, score=0.9)])
+# threatening memories raise perceived threat (toward the negative threat/loss pole)
+scary = interpret(raw2, person(), recalled=[mem(threat=-0.8, score=0.9)])
 check("threatening memories raise perceived threat",
-      scary["threat_challenge"] > base2["threat_challenge"])
+      scary["threat_challenge"] < base2["threat_challenge"])
 
 # familiarity damps novelty: the more it resembles lived experience, the less new it reads
 familiar = interpret(raw2, person(), recalled=[mem(score=0.95)])
@@ -113,7 +114,7 @@ check("lens brief reflects a remembered bad tone",
 check("read_lens tag reflects a remembered bad tone",
       "memory" in read_lens(person(), recalled=bad).lower())
 check("a threatening memory reads as 'braced' in the UI tag",
-      "braced" in read_lens(person(), recalled=[mem(threat=0.8, score=0.9)]).lower())
+      "braced" in read_lens(person(), recalled=[mem(threat=-0.8, score=0.9)]).lower())
 
 # a faint, neutral memory injects nothing (no noise in the prompt or the UI)
 faint = [mem(score=0.30)]

@@ -43,8 +43,10 @@ def _trait_tilt(out, personality):
     g = COGNITION_GAIN
 
     social = out.get("social", 0.0)
-    # neuroticism: read more threat, and a darker valence
-    out["threat_challenge"] = _clamp(out.get("threat_challenge", 0.0) + g * N, -1.0, 1.0)
+    # neuroticism: read more threat, and a darker valence. NOTE the sign: config defines
+    # threat_challenge as -1 = threat/loss, +1 = challenge/growth, so "more threat" means
+    # pushing it *negative* (matching M's N row and the SE/security value).
+    out["threat_challenge"] = _clamp(out.get("threat_challenge", 0.0) - g * N, -1.0, 1.0)
     out["valence"] = _clamp(
         out.get("valence", 0.0) - g * N + g * A * max(0.0, social), -1.0, 1.0)
     # openness: more perceived novelty / interest in the new
@@ -138,8 +140,9 @@ def _trait_brief(bits):
 
 
 def _tone_phrase(exp):
-    """A short verb phrase for the remembered tone, or '' when memory is neutral."""
-    if exp["threat"] > _TONE_THRESH:
+    """A short verb phrase for the remembered tone, or '' when memory is neutral.
+    ``exp["threat"]`` is the threat_challenge dim: negative = threat/loss (config convention)."""
+    if exp["threat"] < -_TONE_THRESH:
         return "tended to feel threatening"
     if exp["valence"] < -_TONE_THRESH:
         return "tended to go badly"
@@ -165,7 +168,7 @@ def _memory_tag(recalled):
     exp = _memory_expectation(recalled)
     if exp is None:
         return ""
-    if exp["threat"] > _TONE_THRESH:
+    if exp["threat"] < -_TONE_THRESH:        # negative threat_challenge = threat/loss
         return "braced by similar past experiences"
     if exp["valence"] < -_TONE_THRESH:
         return "expecting trouble, from memory"
