@@ -25,6 +25,7 @@ the perceive -> form -> perceive loop stable, so the schema reinforces without r
 
 from core.config import (
     COGNITION_GAIN, MEMORY_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT, DRIVE_ACTIVE_THRESH,
+    BASIS, M, SELF_GAIN, SELF_ESTEEM_GAIN, SELF_ACTIVE_THRESH, SELF_INCONGRUENCE_THRESH,
 )
 from core.impact import rule_pull
 
@@ -129,17 +130,48 @@ def _drive_tilt(out, personality):
     return out
 
 
+# --- the self lens (Self-Concept): who they think they are bends the reading ---
+def _self_tilt(out, personality):
+    """Tilt ``out`` by the character's self-concept (``personality["self"]``).
+
+    Two effects, small and clamped: (1) SELF-CONSISTENCY -- project the reading onto the traits
+    it implies and compare to the self-image; an event that CONTRADICTS who they think they are
+    reads as more threat and more self-relevant (dissonance), an affirming one warms. (2) ESTEEM
+    BUFFER -- high self-regard reads events as surmountable challenges, low regard as threats.
+    """
+    self_state = (personality or {}).get("self") or {}
+    image = self_state.get("image") or {}
+    esteem = float(self_state.get("esteem", 0.0))
+    img = {k: float(image.get(k, 0.0)) for k in BASIS}
+    if sum(abs(v) for v in img.values()) + abs(esteem) <= 0.0:
+        return out                                    # no self yet -> no self lens
+    # self-consistency
+    implied = rule_pull(out, BASIS, M)                # the trait direction this event implies
+    align = _clamp(sum(img[k] * implied[k] for k in BASIS), -1.0, 1.0)      # + affirms / - contradicts
+    relevance = _clamp(sum(abs(img[k]) * abs(implied[k]) for k in BASIS), 0.0, 1.0)
+    g = SELF_GAIN
+    out["self_relevance"] = _clamp(out.get("self_relevance", 0.0) + g * relevance, 0.0, 1.0)
+    out["valence"] = _clamp(out.get("valence", 0.0) + g * align, -1.0, 1.0)
+    out["threat_challenge"] = _clamp(out.get("threat_challenge", 0.0) + g * min(0.0, align), -1.0, 1.0)
+    # esteem buffer (threat_challenge is signed, +challenge/-threat)
+    ge = SELF_ESTEEM_GAIN
+    out["threat_challenge"] = _clamp(out.get("threat_challenge", 0.0) + ge * esteem, -1.0, 1.0)
+    out["valence"] = _clamp(out.get("valence", 0.0) + ge * esteem, -1.0, 1.0)
+    return out
+
+
 def interpret(appraisal, personality, recalled=None):
-    """Return a copy of ``appraisal`` bent by who the character is, what they remember, and
-    what they currently want.
+    """Return a copy of ``appraisal`` bent by who the character is, what they remember, what they
+    currently want, and who they think they are.
 
     ``recalled`` is the list of similar past episodes (from ``memory.recall``) for this
-    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The drive
-    tilt reads ``personality["drives"]`` and is a no-op when no need is active.
+    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The drive and
+    self tilts read ``personality["drives"]`` / ``["self"]`` and are no-ops when those are blank.
     """
     out = _trait_tilt(dict(appraisal), personality)
     out = _memory_tilt(out, recalled)
-    return _drive_tilt(out, personality)
+    out = _drive_tilt(out, personality)
+    return _self_tilt(out, personality)
 
 
 # --- briefs: the same tilts as words, for the LLM prompt and the UI -----------
@@ -245,13 +277,57 @@ def _drive_brief(personality):
             "experience meets or denies that.")
 
 
+def _self_incongruent(personality):
+    """True when the self-image has drifted meaningfully from the actual traits (self-deception)."""
+    self_state = (personality or {}).get("self") or {}
+    img = self_state.get("image") or {}
+    if not img:
+        return False
+    traits = (personality or {}).get("traits") or {}
+    incong = sum(abs(float(img.get(k, 0.0)) - float(traits.get(k, 0.0))) for k in BASIS) / len(BASIS)
+    return incong > SELF_INCONGRUENCE_THRESH
+
+
+def _self_bits(personality):
+    """Short self-view phrases for the UI tag (self-regard level + self-image incongruence)."""
+    self_state = (personality or {}).get("self") or {}
+    if not self_state:
+        return []
+    bits = []
+    esteem = float(self_state.get("esteem", 0.0))
+    if esteem > SELF_ACTIVE_THRESH:
+        bits.append("secure in themselves")
+    elif esteem < -SELF_ACTIVE_THRESH:
+        bits.append("shaky sense of self")
+    if _self_incongruent(personality):
+        bits.append("self-image lagging who they've become")
+    return bits
+
+
+def _self_brief(personality):
+    """The self-view as a sentence for the LLM push prompt (empty when nothing stands out)."""
+    self_state = (personality or {}).get("self") or {}
+    if not self_state:
+        return ""
+    esteem = float(self_state.get("esteem", 0.0))
+    parts = []
+    if esteem > SELF_ACTIVE_THRESH:
+        parts.append("they carry a steady sense of their own worth and meet setbacks as challenges")
+    elif esteem < -SELF_ACTIVE_THRESH:
+        parts.append("they doubt their own worth and take setbacks personally")
+    if _self_incongruent(personality):
+        parts.append("their self-image lags who they have become, and they resist revising it")
+    return ("How they see themselves: " + "; ".join(parts) + ".") if parts else ""
+
+
 def lens(personality, recalled=None):
-    """A short interpretive brief for the LLM push prompt -- how this person tends to read
-    events, from their strong traits, from how similar past experiences felt, and from what
-    they currently want. Empty when nothing tilts the reading."""
+    """A short interpretive brief for the LLM push prompt -- how this person tends to read events,
+    from their strong traits, from how similar past experiences felt, from what they currently
+    want, and from who they think they are. Empty when nothing tilts the reading."""
     parts = [_trait_brief(_lens_bits(personality)),
              _memory_brief(recalled),
-             _drive_brief(personality)]
+             _drive_brief(personality),
+             _self_brief(personality)]
     return " ".join(p for p in parts if p)
 
 
@@ -260,5 +336,5 @@ def read_lens(personality, recalled=None):
     bits = _lens_bits(personality)
     tag = _memory_tag(recalled)
     need = _active_need(personality)
-    extras = ([tag] if tag else []) + ([_DRIVE_TAG[need]] if need else [])
+    extras = ([tag] if tag else []) + ([_DRIVE_TAG[need]] if need else []) + _self_bits(personality)
     return " · ".join(bits + extras)

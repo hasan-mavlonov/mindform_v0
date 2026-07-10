@@ -17,6 +17,7 @@ import re
 from core.config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL, DRIVES
 from nodes.character import default_character
 from nodes.drives import rest_drives
+from nodes.self_concept import default_self, seed_base
 
 PERSONALITY_FILE = "data/personality.json"
 CHARACTERS_DIR = "data/characters"
@@ -33,7 +34,7 @@ def default_temperament():
 def default_personality():
     """A blank character: born at a neutral temperament (traits start at mu = 0)."""
     character = default_character()
-    return {
+    personality = {
         "identity": {},
         "temperament": default_temperament(),
         "traits": {d: 0.0 for d in BASIS},
@@ -41,6 +42,8 @@ def default_personality():
         "drives": rest_drives(character["values"]),   # needs seeded at their resting level
         "experience_count": 0,
     }
+    personality["self"] = default_self(personality)   # self-image mirrors the birth traits
+    return personality
 
 
 def _ensure_temperament(personality):
@@ -87,6 +90,20 @@ def _ensure_drives(personality):
     return personality
 
 
+def _ensure_self(personality):
+    """Backfill the self-concept onto a pre-self save (self-image = current traits, esteem at base)."""
+    self_state = personality.get("self")
+    if not isinstance(self_state, dict) or "image" not in self_state:
+        personality["self"] = default_self(personality)
+    else:
+        image = self_state.setdefault("image", {})
+        traits = personality.get("traits") or {}
+        for d in BASIS:                        # seed any missing OCEAN self-image dim from the trait
+            image.setdefault(d, float(traits.get(d, 0.0)))
+        self_state.setdefault("esteem", seed_base(personality))
+    return personality
+
+
 def migrate(data):
     """Upgrade legacy formats and backfill temperament. Pure -- the caller persists."""
     if "traits" in data:                     # current shape (maybe pre-temperament)
@@ -103,7 +120,7 @@ def migrate(data):
             key = name_to_key.get(name)
             if key is not None:
                 personality["traits"][key] = value
-    return _ensure_drives(_ensure_character(_ensure_temperament(personality)))
+    return _ensure_self(_ensure_drives(_ensure_character(_ensure_temperament(personality))))
 
 
 def _read(path):
