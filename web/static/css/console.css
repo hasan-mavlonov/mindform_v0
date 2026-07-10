@@ -18,6 +18,7 @@
   --trait: #5B3FE0;
   --warm: #F5B341;
   --moral: #1FA89A;
+  --drive: #2F9E5E;
   --surface: #ffffff; --surface-2: #FBF8F2;
   --track: rgba(26,14,46,0.07);
   --serif: "Instrument Serif", Georgia, serif;
@@ -35,6 +36,7 @@
   --trait: #9A7FFF;
   --warm: #F5B341;
   --moral: #54D6C4;
+  --drive: #56D98A;
   --surface: #14102A; --surface-2: #0F0A20;
   --track: rgba(242,234,214,0.08);
   color-scheme: dark;
@@ -53,6 +55,7 @@ p { margin: 0; }
 .t-belief { color: var(--belief); }
 .t-trait { color: var(--trait); }
 .t-warm { color: var(--warm); }
+.t-drive { color: var(--drive); }
 .hidden { display: none !important; }
 
 /* ---------- shell ---------- */
@@ -172,6 +175,7 @@ p { margin: 0; }
 .mood-meter-fill.t-trait { background: var(--trait); }
 .mood-meter-fill.t-warm { background: var(--warm); }
 .mood-meter-fill.t-muted { background: var(--muted); opacity: .6; }
+.mood-meter-fill.t-drive { background: var(--drive); }
 .mood-meter-val { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: right;
   white-space: nowrap; transition: color .3s; }
 .mood-meter-val.moved { color: var(--trait); }
@@ -234,6 +238,18 @@ p { margin: 0; }
 .cbar--moral .cbar-val { color: var(--moral); }
 .cbar--moral .cbar-fill { background: var(--moral); box-shadow: 0 0 10px -3px var(--moral);
   transition: left .9s cubic-bezier(.4,0,.2,1), width .9s cubic-bezier(.4,0,.2,1); }
+
+/* Motivation: the three SDT needs. tension fills from the left (unsigned); the ghost tick
+   marks the resting level. A green pulse (is-sat) when the experience fed the need, the
+   shared magenta is-flash when it denied it. */
+.cbar--drive .cbar-val { color: var(--drive); }
+.cbar--drive .cbar-fill { background: var(--drive); box-shadow: 0 0 10px -3px var(--drive);
+  transition: left .8s cubic-bezier(.4,0,.2,1), width .8s cubic-bezier(.4,0,.2,1); }
+.cbar.is-sat .cbar-fill { animation: satGlow 1.3s ease; }
+@keyframes satGlow { 0% { box-shadow: 0 0 0 0 var(--drive); } 30% { box-shadow: 0 0 16px 2px var(--drive); }
+  100% { box-shadow: 0 0 10px -3px var(--drive); } }
+.cbar.is-sat .cbar-name { color: var(--drive); transition: color .3s; }
+.block-badge.drive { background: color-mix(in srgb, var(--drive) 20%, transparent); color: var(--drive); }
 
 .belief-list { display: flex; flex-direction: column; gap: 9px; }
 .belief-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline;

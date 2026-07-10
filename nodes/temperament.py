@@ -23,6 +23,7 @@ import logging
 from core.config import BASIS, DEFAULT_TAU, LLM_LABEL
 from core.llm import complete_json
 from nodes.character import default_character
+from nodes.drives import rest_drives
 
 log = logging.getLogger("mindform.genesis")
 
@@ -150,11 +151,13 @@ def _finalize(seed, overrides=None):
 
     mu = {d: _clamp(float(seed["mu"].get(d, 0.0)), -1.0, 1.0) for d in BASIS}
     tau = {d: _clamp(float(seed["tau"].get(d, DEFAULT_TAU)), 0.0, 1.0) for d in BASIS}
+    character = default_character()          # values start neutral -- earned, not innate
     return {
         "identity": dict(seed.get("identity") or {}),
         "temperament": {"mu": mu, "tau": tau},
         "traits": dict(mu),       # born at baseline: x = mu
-        "character": default_character(),   # values start neutral -- earned, not innate
+        "character": character,
+        "drives": rest_drives(character["values"]),   # needs at rest (blank values -> floor)
         "experience_count": 0,
     }
 
