@@ -19,6 +19,7 @@ import logging
 from core.config import (
     BASIS, BASIS_NAMES, TRAIT_QUESTIONS, TRAIT_LEVELS, IDENTITY_FIELDS,
     APPRAISAL_DIMS, DEFAULT_TAU, VALUES, VALUES_NAMES, MORAL, MORAL_NAMES,
+    RECALL_CANDIDATES,
 )
 from core.appraisal import appraise
 from nodes.cognition import interpret, lens, read_lens
@@ -33,7 +34,7 @@ from nodes.character import (
 )
 from nodes.drives import (
     refresh as refresh_drives, apply_event as apply_drive_event,
-    tensions as drive_tensions, read_drives, dominant_drive,
+    tensions as drive_tensions, read_drives, dominant_drive, recall_bias,
 )
 from nodes.self_concept import (
     refresh as refresh_self, apply_event as apply_self_event, read_self, self_signal,
@@ -214,8 +215,10 @@ def _formation(before, after):
 
 
 def _recalled_rows(recalled):
-    """The past memories this turn surfaced (text + relevance score), for the UI."""
-    return [{"text": m.get("text", ""), "score": float(m.get("score", 0.0))}
+    """The past memories this turn surfaced, for the UI: text, the honest cosine score, and --
+    when an active need pulled the memory up -- which need (motivated retrieval, named)."""
+    return [{"text": m.get("text", ""), "score": float(m.get("score", 0.0)),
+             "need": m.get("need"), "need_pull": float(m.get("need_pull", 0.0))}
             for m in (recalled or [])]
 
 
@@ -330,7 +333,7 @@ def create_manual(identity, levels):
 
 
 # --- The talk loop: one experience -> personality update ---------------------
-def _recall(text, name):
+def _recall(text, name, personality=None):
     """Encode the experience and look back, BEFORE it is stored. Returns
     ``(embedding, seen, recalled)``.
 
@@ -338,6 +341,10 @@ def _recall(text, name):
     can't count recurrences or recall similar episodes (returns ``(None, None, [])``).
     Recall runs before the current experience is stored, so a message never just recalls
     itself -- and crucially before ``interpret``, so memory can colour the reading.
+
+    MOTIVATED RETRIEVAL: recall fetches a wider candidate pool, then the character's
+    active needs re-rank it (``drives.recall_bias``) -- what they lack shapes what comes
+    to mind. Pass ``personality`` with its drives already refreshed.
     """
     try:
         from core.encoder import encode_text          # heavy: sentence-transformers
@@ -347,7 +354,9 @@ def _recall(text, name):
         return None, None, []
     try:
         embedding = encode_text(text)
-        return embedding, recurrence(embedding, name=name), recall(embedding, name=name)
+        candidates = recall(embedding, name=name, k=RECALL_CANDIDATES)
+        recalled = recall_bias(candidates, (personality or {}).get("drives"))
+        return embedding, recurrence(embedding, name=name), recalled
     except Exception as exc:
         log.warning("recall step failed (%s); continuing", exc)
         return None, None, []
@@ -398,13 +407,15 @@ def run_turn(name, message):
     personality = load_character(name)
     char_name = (personality.get("identity") or {}).get("name")
 
-    # Look back BEFORE interpreting, so memory can colour how this experience is read.
-    embedding, seen, recalled = _recall(text, char_name)
-
     # MOTIVATION: recompute each need's resting weight from the current values and let unmet
-    # needs rebuild pressure (regeneration) BEFORE interpreting, so active needs colour the read.
+    # needs rebuild pressure (regeneration) FIRST -- the refreshed needs steer both what is
+    # remembered (motivated retrieval, below) and how the experience is read (interpret).
     personality = refresh_drives(personality)
     drive_before = drive_tensions(personality.get("drives"))   # rest level, to measure the event
+
+    # Look back BEFORE interpreting, so memory can colour how this experience is read --
+    # with the active needs re-ranking what comes to mind (drives.recall_bias).
+    embedding, seen, recalled = _recall(text, char_name, personality)
 
     # SELF-CONCEPT: relax self-esteem toward its dispositional baseline BEFORE interpreting, so the
     # self they carry (self-image + regard) colours the read.

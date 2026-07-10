@@ -17,8 +17,14 @@ Per turn (``engine_bridge.run_turn``):
   * ``cognition._drive_tilt`` reads the tensions to colour the appraisal (goal-relevance +
                         goal-congruence): the WANTING enters perception there.
   * ``apply_event``  -- a satisfying experience drops tension below rest (temporary relief), a
-                        frustrating one raises it; regeneration brings the need back over later
-                        turns, so satisfaction fades and the need returns.
+                        frustrating one raises it -- and raises it HARDER than an equal
+                        satisfaction relieves (SDT's asymmetry: frustration is the more potent
+                        experience); regeneration brings the need back over later turns, so
+                        satisfaction fades and the need returns.
+  * ``recall_bias``  -- motivated retrieval (the Motivation <-> Memory edge): the active needs
+                        re-rank what ``memory.recall`` surfaces, so a connection-starved
+                        character remembers belonging and an achievement-starved one remembers
+                        mastery -- what they lack shapes what comes to mind.
 
 Only TENSION is persisted (``personality["drives"]``); WEIGHT is derived from the values each
 turn. Pure arithmetic -- no LLM, no numpy -- so it degrades exactly like every other node.
@@ -27,8 +33,11 @@ turn. Pure arithmetic -- no LLM, no numpy -- so it degrades exactly like every o
 from core.config import (
     DRIVES, DRIVE_NAMES, DRIVE_SEED, DRIVE_SAT,
     DRIVE_WEIGHT_FLOOR, DRIVE_WEIGHT_SLOPE, DRIVE_REGEN, DRIVE_SAT_GAIN,
+    DRIVE_FRUST_GAIN, DRIVE_RECALL_GAIN,
 )
 from core.impact import rule_pull
+
+_RECALL_TAG_THRESH = 0.25   # how strongly a need must pull a memory up to be named on it
 
 
 def _clamp01(value):
@@ -94,11 +103,53 @@ def satisfaction(appraisal):
 def apply_event(drives, appraisal):
     """The fast step: a satisfying event lowers tension (relief), a frustrating one raises it.
 
-    Returns new drives (input unchanged).
+    Asymmetric (SDT): frustration is the more potent experience, so a frustrating event
+    (``signal < 0``) moves tension by ``DRIVE_FRUST_GAIN``, a satisfying one only by
+    ``DRIVE_SAT_GAIN`` -- a bad day costs more than a good day repays. Returns new drives
+    (input unchanged).
     """
     signal = satisfaction(appraisal)
     t = tensions(drives or default_drives())
-    return {d: {"tension": _clamp01(t[d] - DRIVE_SAT_GAIN * signal[d])} for d in DRIVES}
+    return {
+        d: {"tension": _clamp01(
+            t[d] - (DRIVE_SAT_GAIN if signal[d] >= 0 else DRIVE_FRUST_GAIN) * signal[d])}
+        for d in DRIVES
+    }
+
+
+# --- Motivated retrieval: what they lack shapes what they remember ---------------
+def recall_bias(recalled, drives, k=3):
+    """Re-rank recalled memories by the active needs and cut to ``k`` (motivated retrieval).
+
+    Each stored memory carries the *interpreted* appraisal it was lived with, so
+    ``satisfaction`` reads how much that episode was ABOUT each need's domain; a memory
+    that bears on a currently-loud need is pulled up. The bias is multiplicative on the
+    cosine (``score * (1 + gain * pull)``): semantic relevance stays primary -- the need
+    chooses among genuinely related memories, it cannot surface an unrelated one. The
+    displayed ``score`` stays the honest cosine (selection is biased, familiarity is not);
+    the pulling need is named on the record (``need``/``need_pull``) for the cockpit.
+
+    Pure arithmetic over the recalled list -- no numpy, no memory access -- so it is
+    dependency-free testable and a no-op when nothing is loud.
+    """
+    recalled = list(recalled or [])
+    t = tensions(drives)
+    if not recalled or sum(t.values()) <= 0.0 or DRIVE_RECALL_GAIN <= 0.0:
+        return recalled[:k]
+    ranked = []
+    for m in recalled:
+        sat = satisfaction(m.get("appraisal") or {})
+        pull_by_need = {d: t[d] * abs(sat[d]) for d in DRIVES}
+        pull = _clamp01(sum(pull_by_need.values()))
+        biased = float(m.get("score", 0.0)) * (1.0 + DRIVE_RECALL_GAIN * pull)
+        record = dict(m)
+        record["need_pull"] = pull
+        top = max(DRIVES, key=lambda d: pull_by_need[d])
+        if pull_by_need[top] >= _RECALL_TAG_THRESH:
+            record["need"] = top                     # loud need, clearly this memory's domain
+        ranked.append((biased, record))
+    ranked.sort(key=lambda pair: -pair[0])
+    return [record for _, record in ranked[:k]]
 
 
 # --- Read-outs -----------------------------------------------------------------

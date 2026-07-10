@@ -671,10 +671,19 @@
       host.appendChild(elc("p", "char-empty", "Nothing specific came to mind."));
       return;
     }
+    const NEED_TAG = {
+      autonomy: "their need for autonomy",
+      competence: "their need to prove themselves",
+      relatedness: "their need for connection",
+    };
     recalled.forEach((m) => {
       const item = elc("div", "recall-item");
       item.appendChild(elc("span", "recall-score", (m.score || 0).toFixed(2)));
       item.appendChild(elc("span", "recall-text", m.text));
+      if (m.need && NEED_TAG[m.need]) {
+        // motivated retrieval: this memory was pulled up by an active need
+        item.appendChild(elc("span", "recall-need", "surfaced by " + NEED_TAG[m.need]));
+      }
       host.appendChild(item);
     });
   }
