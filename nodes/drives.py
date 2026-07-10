@@ -33,7 +33,7 @@ turn. Pure arithmetic -- no LLM, no numpy -- so it degrades exactly like every o
 from core.config import (
     DRIVES, DRIVE_NAMES, DRIVE_SEED, DRIVE_SAT,
     DRIVE_WEIGHT_FLOOR, DRIVE_WEIGHT_SLOPE, DRIVE_REGEN, DRIVE_SAT_GAIN,
-    DRIVE_FRUST_GAIN, DRIVE_RECALL_GAIN,
+    DRIVE_FRUST_GAIN, DRIVE_RECALL_GAIN, DRIVE_ACTIVE_THRESH,
 )
 from core.impact import rule_pull
 
@@ -130,16 +130,20 @@ def recall_bias(recalled, drives, k=3):
     the pulling need is named on the record (``need``/``need_pull``) for the cockpit.
 
     Pure arithmetic over the recalled list -- no numpy, no memory access -- so it is
-    dependency-free testable and a no-op when nothing is loud.
+    dependency-free testable. Gated on ACTIVE needs only (``DRIVE_ACTIVE_THRESH``, the same
+    meaning of "loud" the lens and the voice use): at rest -- every need sitting at its
+    floor/weight -- recall stays pure semantic similarity. Motivated retrieval needs a
+    motive; a quiet need neither re-ranks nor tags.
     """
     recalled = list(recalled or [])
     t = tensions(drives)
-    if not recalled or sum(t.values()) <= 0.0 or DRIVE_RECALL_GAIN <= 0.0:
+    active = {d: (t[d] if t[d] >= DRIVE_ACTIVE_THRESH else 0.0) for d in DRIVES}
+    if not recalled or sum(active.values()) <= 0.0 or DRIVE_RECALL_GAIN <= 0.0:
         return recalled[:k]
     ranked = []
     for m in recalled:
         sat = satisfaction(m.get("appraisal") or {})
-        pull_by_need = {d: t[d] * abs(sat[d]) for d in DRIVES}
+        pull_by_need = {d: active[d] * abs(sat[d]) for d in DRIVES}
         pull = _clamp01(sum(pull_by_need.values()))
         biased = float(m.get("score", 0.0)) * (1.0 + DRIVE_RECALL_GAIN * pull)
         record = dict(m)

@@ -197,6 +197,19 @@ unbiased = drives.recall_bias([mastery_mem, social_mem, neutral_mem], quiet)
 check("with no active need the order is untouched (pure pass-through)",
       [m["text"] for m in unbiased] == ["finally winning the contest",
                                         "laughing with friends", "a walk in the rain"])
+# a character AT REST (every need at its floor) has no motive either: sub-threshold
+# tensions must neither re-rank nor tag -- motivated retrieval needs a loud need
+at_rest = person({"relatedness": 0.30, "competence": 0.30, "autonomy": 0.30})["drives"]
+resting = drives.recall_bias([mastery_mem, social_mem, neutral_mem], at_rest)
+check("at rest (all needs at the floor) recall stays pure similarity",
+      [m["text"] for m in resting] == ["finally winning the contest",
+                                       "laughing with friends", "a walk in the rain"]
+      and all("need" not in m for m in resting))
+# just-below-threshold needs stay quiet even next to one loud need's re-rank
+one_loud = person({"relatedness": 0.9, "competence": 0.54, "autonomy": 0.54})["drives"]
+check("sub-threshold needs contribute nothing even when another need is loud",
+      drives.recall_bias([mastery_mem, social_mem], one_loud)[0]["text"]
+      == "laughing with friends")
 check("the pool is cut to k", len(drives.recall_bias([social_mem] * 8, lonely, k=3)) == 3)
 check("recall_bias survives empty and missing-appraisal input",
       drives.recall_bias([], lonely) == []
