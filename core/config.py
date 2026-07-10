@@ -183,6 +183,25 @@ DRIVE_SAT_GAIN = 0.35       # how strongly one satisfying/frustrating event move
 DRIVE_GAIN = 0.15           # how much active-need tension tilts the appraisal (matches COGNITION_GAIN)
 DRIVE_ACTIVE_THRESH = 0.55  # a need must be at least this loud to surface in the lens brief / tag
 
+# --- SELF-CONCEPT & IDENTITY: the reflective model of the self ---
+# A fourth layer: the character's model OF ITSELF, which can diverge from what it actually is.
+# self["image"] = a self-schema on the OCEAN basis (who they think they are), formed by
+# self-perception (Bem: it drifts toward the actual traits) WITH self-verification resistance
+# (Swann: drift against the current self-view is damped, so the self-image LAGS reality --
+# "still thinks they're the shy one long after becoming confident"). self["esteem"] = a scalar
+# self-regard (a sociometer riding the competence + relatedness needs) that relaxes to a
+# dispositional baseline set by temperament + achievement. It bends perception via a
+# self-consistency tilt (events that contradict the self-view read as threat) + an esteem buffer.
+SELF_BASE = {"mu": {"N": -0.5, "E": 0.25}, "values": {"AC": 0.3}}   # dispositional esteem set-point
+SCHEMA_LEARN = 0.08          # self-perception drift rate (self-image tracks the actual traits; slow -> lags)
+SCHEMA_RESIST = 0.35         # Swann: fraction of the drift rate kept when the move opposes the self-view
+ESTEEM_GAIN = 0.20           # how strongly one success/acceptance (or failure/rejection) moves self-regard
+ESTEEM_RELAX = 0.10          # per turn, self-regard relaxes toward its dispositional baseline
+SELF_GAIN = 0.15             # self-consistency tilt: contradiction reads as threat, affirmation warms
+SELF_ESTEEM_GAIN = 0.10      # esteem buffer: high regard reads events as challenges, low as threats
+SELF_ACTIVE_THRESH = 0.25    # how strong esteem must be to surface a self tag in the lens
+SELF_INCONGRUENCE_THRESH = 0.25   # mean self-image-vs-actual gap that surfaces the "self-image lags" tag
+
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3

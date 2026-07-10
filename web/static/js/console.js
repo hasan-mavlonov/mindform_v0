@@ -50,6 +50,7 @@
     valueBars: {},  // Schwartz values:   key -> { root, fill, val }
     moralBars: {},  // moral foundations: key -> { root, fill, val }
     driveBars: {},  // SDT needs:         key -> { root, fill, ghost, val }
+    selfBars: {},   // self-concept:      key -> { root, fill, ghost, val }
     reflTimer: null,
   };
 
@@ -247,6 +248,7 @@
     buildTraitBars(snap);
     buildCharacter(snap);
     buildDrives(snap);
+    buildSelf(snap);
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
@@ -530,6 +532,74 @@
     });
   }
 
+  // ---- Self-concept: self-worth (esteem, ghost = dispositional baseline) + a five-trait
+  // self-image (fill = who they think they are, ghost = who they ACTUALLY are; the gap is
+  // self-deception). Green flash when the experience affirmed the self-view / lifted regard,
+  // magenta when it contradicted it / lowered regard.
+  function selfRows(snap) {
+    const s = snap.self;
+    if (!s || !s.image) return [];
+    const rows = [{ key: "esteem", label: "self-worth", value: s.esteem, ghost: s.base, kind: "esteem" }];
+    s.image.forEach((r) => rows.push({ key: r.key, label: r.label, value: r.image, ghost: r.actual, kind: "image" }));
+    return rows;
+  }
+
+  function buildSelf(snap) {
+    const host = $("self-bars");
+    if (!host) return;
+    host.innerHTML = ""; App.selfBars = {};
+    const rows = selfRows(snap);
+    if (!rows.length) {
+      host.appendChild(elc("p", "char-empty", "Forming — a sense of self grows with experience."));
+      return;
+    }
+    rows.forEach((r) => {
+      const root = elc("div", "cbar cbar--self");
+      const top = elc("div", "cbar-top");
+      top.appendChild(elc("span", "cbar-name", r.label));
+      const val = elc("span", "cbar-val");
+      top.appendChild(val);
+      root.appendChild(top);
+      const track = elc("div", "cbar-track");
+      track.appendChild(elc("span", "cbar-zero"));
+      const ghost = elc("span", "cbar-ghost");
+      ghost.title = r.kind === "esteem" ? "baseline" : "who they actually are";
+      track.appendChild(ghost);
+      const fill = elc("span", "cbar-fill");
+      track.appendChild(fill);
+      root.appendChild(track);
+      host.appendChild(root);
+      App.selfBars[r.key] = { root, fill, ghost, val };
+    });
+    updateSelf(snap, false);
+  }
+
+  function updateSelf(snap, flash) {
+    const s = snap.self;
+    if (!s) return;
+    const align = s.align || 0, edelta = s.esteem_delta || 0;
+    selfRows(snap).forEach((r) => {
+      const b = App.selfBars[r.key];
+      if (!b) return;
+      const f = centerFill(r.value);
+      b.fill.style.left = f.left + "%"; b.fill.style.width = f.width + "%";
+      b.ghost.style.left = pct(r.ghost) + "%";
+      b.val.textContent = fmt(r.value);
+      if (flash) {
+        // esteem flashes on its own rise/fall; the self-image bars flash on whether the
+        // experience affirmed (green) or contradicted (magenta) the self-view.
+        let cls = null;
+        if (r.kind === "esteem" && Math.abs(edelta) > 0.005) cls = edelta > 0 ? "is-sat" : "is-flash";
+        else if (r.kind === "image" && Math.abs(align) > 0.15) cls = align > 0 ? "is-sat" : "is-flash";
+        if (cls) {
+          b.root.classList.remove("is-sat", "is-flash");
+          void b.root.offsetWidth;
+          b.root.classList.add(cls);
+        }
+      }
+    });
+  }
+
   function renderLens(snap) {
     const el = $("lens-line");
     if (!el) return;
@@ -694,6 +764,7 @@
       updateTraitBars(snap, moved);         // violet bars ease to new values
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
       updateDrives(snap, true);             // SDT needs: tension + satisfy/frustrate flash
+      updateSelf(snap, true);               // self-image vs actual + esteem, with affirm/contradict flash
       renderRecall(snap);                   // the memories this message surfaced
       renderLens(snap);                     // how they're reading the world now
       renderMood(snap);

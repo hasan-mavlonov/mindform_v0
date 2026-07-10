@@ -35,6 +35,9 @@ from nodes.drives import (
     refresh as refresh_drives, apply_event as apply_drive_event,
     tensions as drive_tensions, read_drives, dominant_drive,
 )
+from nodes.self_concept import (
+    refresh as refresh_self, apply_event as apply_self_event, read_self, self_signal,
+)
 from core.personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
@@ -226,10 +229,21 @@ def _drive_rows(personality, before_tension=None):
     return rows
 
 
+def _self_row(personality, before=None, signal=None):
+    """The self-concept for the UI: per-OCEAN self-image vs the actual trait (the gap is
+    self-deception), esteem + its dispositional baseline, this turn's esteem delta, and the
+    self-consistency ``align`` (> 0 the experience affirmed the self-view, < 0 contradicted it)."""
+    row = read_self(personality)
+    before = before or {}
+    row["esteem_delta"] = row["esteem"] - float(before.get("esteem", row["esteem"]))
+    row["align"] = float((signal or {}).get("align", 0.0))
+    return row
+
+
 def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
-             moral_push=None, recalled=None, drive_before=None):
+             moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -254,6 +268,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         ),
         "drives": _drive_rows(personality, drive_before),
         "drive": dominant_drive(personality),
+        "self": _self_row(personality, self_before, self_sig),
         "reply": reply,
     }
 
@@ -388,8 +403,14 @@ def run_turn(name, message):
     personality = refresh_drives(personality)
     drive_before = drive_tensions(personality.get("drives"))   # rest level, to measure the event
 
+    # SELF-CONCEPT: relax self-esteem toward its dispositional baseline BEFORE interpreting, so the
+    # self they carry (self-image + regard) colours the read.
+    personality = refresh_self(personality)
+    self_before = dict(personality.get("self") or {})          # esteem/image before the event
+
     raw_appraisal = appraise(text)                                         # the base reading
     appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
+    self_sig = self_signal(personality.get("self"), appraisal)  # did it affirm / contradict the self-view
     view = lens(personality, recalled=recalled)
     push, source, reasoning = push_from_text(text, appraisal, lens=view)
     values_push, values_source, values_reasoning = values_push_from_text(text, appraisal, lens=view)
@@ -417,6 +438,10 @@ def run_turn(name, message):
     personality = {**personality,
                    "drives": apply_drive_event(personality.get("drives"), appraisal)}
 
+    # SELF-CONCEPT: self-regard responds to the interpreted experience (sociometer) and the
+    # self-image drifts toward the just-formed traits (self-perception, resisting disconfirmation).
+    personality = apply_self_event(personality, appraisal, personality["traits"])
+
     save_character(personality)
 
     formation = _formation(before_traits, personality)
@@ -427,5 +452,5 @@ def run_turn(name, message):
         source=source, reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
-        drive_before=drive_before,
+        drive_before=drive_before, self_before=self_before, self_sig=self_sig,
     )

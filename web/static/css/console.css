@@ -19,6 +19,7 @@
   --warm: #F5B341;
   --moral: #1FA89A;
   --drive: #2F9E5E;
+  --self: #3E86C0;
   --surface: #ffffff; --surface-2: #FBF8F2;
   --track: rgba(26,14,46,0.07);
   --serif: "Instrument Serif", Georgia, serif;
@@ -37,6 +38,7 @@
   --warm: #F5B341;
   --moral: #54D6C4;
   --drive: #56D98A;
+  --self: #6FB0EF;
   --surface: #14102A; --surface-2: #0F0A20;
   --track: rgba(242,234,214,0.08);
   color-scheme: dark;
@@ -250,6 +252,15 @@ p { margin: 0; }
   100% { box-shadow: 0 0 10px -3px var(--drive); } }
 .cbar.is-sat .cbar-name { color: var(--drive); transition: color .3s; }
 .block-badge.drive { background: color-mix(in srgb, var(--drive) 20%, transparent); color: var(--drive); }
+
+/* Self-concept: signed center-zero bars. Self-worth's ghost is the dispositional baseline;
+   each self-image bar's ghost sits at the ACTUAL trait, so the fill-vs-ghost gap is self-image.
+   is-sat (green) = the experience affirmed the self / lifted regard; is-flash (magenta) = it
+   contradicted the self / lowered regard. */
+.cbar--self .cbar-val { color: var(--self); }
+.cbar--self .cbar-fill { background: var(--self); box-shadow: 0 0 10px -3px var(--self);
+  transition: left .9s cubic-bezier(.4,0,.2,1), width .9s cubic-bezier(.4,0,.2,1); }
+.block-badge.self { background: color-mix(in srgb, var(--self) 22%, transparent); color: var(--self); }
 
 .belief-list { display: flex; flex-direction: column; gap: 9px; }
 .belief-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline;
