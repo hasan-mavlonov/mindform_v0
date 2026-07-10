@@ -51,6 +51,7 @@
     moralBars: {},  // moral foundations: key -> { root, fill, val }
     driveBars: {},  // SDT needs:         key -> { root, fill, ghost, val }
     selfBars: {},   // self-concept:      key -> { root, fill, ghost, val }
+    voiceBars: {},  // expression style:  key -> { root, fill, val, last }
     reflTimer: null,
   };
 
@@ -249,6 +250,7 @@
     buildCharacter(snap);
     buildDrives(snap);
     buildSelf(snap);
+    buildVoice(snap);
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
@@ -274,7 +276,8 @@
     $("hs-dominant-label").textContent = d.name + (d.dir >= 0 ? " ▲" : " ▼");
     $("hs-dominant").title = d.glyph;
     $("chat-name").textContent = snap.name;
-    $("chat-tagline").textContent = d.glyph;
+    const voiceLine = snap.expression && snap.expression.line;
+    $("chat-tagline").textContent = d.glyph + (voiceLine ? " — " + voiceLine : "");
   }
 
   function buildSuggestions() {
@@ -600,6 +603,57 @@
     });
   }
 
+  // ---- Expression: the outward voice -- four style dims derived from the self-view,
+  // regard, and need pressure (no ghost: there is no baseline, only the current manner).
+  function buildVoice(snap) {
+    const host = $("voice-bars");
+    if (!host) return;
+    host.innerHTML = ""; App.voiceBars = {};
+    const rows = (snap.expression && snap.expression.style) || [];
+    rows.forEach((r) => {
+      const root = elc("div", "cbar cbar--voice");
+      const top = elc("div", "cbar-top");
+      top.appendChild(elc("span", "cbar-name", r.label));
+      const val = elc("span", "cbar-val");
+      top.appendChild(val);
+      root.appendChild(top);
+      const track = elc("div", "cbar-track");
+      track.appendChild(elc("span", "cbar-zero"));
+      const fill = elc("span", "cbar-fill");
+      track.appendChild(fill);
+      root.appendChild(track);
+      host.appendChild(root);
+      App.voiceBars[r.key] = { root, fill, val, last: null };
+    });
+    updateVoice(snap, false);
+  }
+
+  function updateVoice(snap, flash) {
+    const ex = snap.expression || {};
+    (ex.style || []).forEach((r) => {
+      const b = App.voiceBars[r.key];
+      if (!b) return;
+      const f = centerFill(r.value);
+      b.fill.style.left = f.left + "%"; b.fill.style.width = f.width + "%";
+      b.val.textContent = fmt(r.value);
+      if (flash && b.last != null && Math.abs(r.value - b.last) > 0.02) {
+        b.root.classList.remove("is-flash");
+        void b.root.offsetWidth;
+        b.root.classList.add("is-flash");
+      }
+      b.last = r.value;
+    });
+    const meta = $("voice-meta");
+    if (meta) {
+      const via = ex.source ? (ex.source === "rule" ? "offline voice" : "via " + ex.source) : "";
+      const line = ex.line ? "In their voice: " + ex.line : "";
+      meta.innerHTML = "";
+      if (line) meta.appendChild(document.createTextNode(line));
+      if (line && via) meta.appendChild(document.createTextNode(" · "));
+      if (via) { const b = elc("b", null, via); meta.appendChild(b); }
+    }
+  }
+
   function renderLens(snap) {
     const el = $("lens-line");
     if (!el) return;
@@ -765,6 +819,7 @@
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
       updateDrives(snap, true);             // SDT needs: tension + satisfy/frustrate flash
       updateSelf(snap, true);               // self-image vs actual + esteem, with affirm/contradict flash
+      updateVoice(snap, true);              // the outward voice: style dims + the via chip
       renderRecall(snap);                   // the memories this message surfaced
       renderLens(snap);                     // how they're reading the world now
       renderMood(snap);

@@ -38,6 +38,7 @@ from nodes.drives import (
 from nodes.self_concept import (
     refresh as refresh_self, apply_event as apply_self_event, read_self, self_signal,
 )
+from nodes.expression import read_expression
 from core.personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
@@ -243,7 +244,8 @@ def _self_row(personality, before=None, signal=None):
 def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
-             moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None):
+             moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None,
+             reply_source=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -269,6 +271,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         "drives": _drive_rows(personality, drive_before),
         "drive": dominant_drive(personality),
         "self": _self_row(personality, self_before, self_sig),
+        "expression": {**read_expression(personality, appraisal), "source": reply_source},
         "reply": reply,
     }
 
@@ -445,7 +448,10 @@ def run_turn(name, message):
     save_character(personality)
 
     formation = _formation(before_traits, personality)
-    reply = generate_reply(personality, text, memories=recalled)
+    # SOCIAL EXPRESSION: the reply speaks from the self-view in the character's current
+    # voice, and sees this turn's INTERPRETED appraisal -- the lens drives the mouth.
+    reply, reply_source = generate_reply(personality, text, memories=recalled,
+                                         appraisal=appraisal)
 
     return snapshot(
         personality, push=push, appraisal=appraisal, appraisal_raw=raw_appraisal,
@@ -453,4 +459,5 @@ def run_turn(name, message):
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
         drive_before=drive_before, self_before=self_before, self_sig=self_sig,
+        reply_source=reply_source,
     )

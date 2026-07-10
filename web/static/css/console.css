@@ -20,6 +20,7 @@
   --moral: #1FA89A;
   --drive: #2F9E5E;
   --self: #3E86C0;
+  --voice: #C2603E;
   --surface: #ffffff; --surface-2: #FBF8F2;
   --track: rgba(26,14,46,0.07);
   --serif: "Instrument Serif", Georgia, serif;
@@ -39,6 +40,7 @@
   --moral: #54D6C4;
   --drive: #56D98A;
   --self: #6FB0EF;
+  --voice: #EF9670;
   --surface: #14102A; --surface-2: #0F0A20;
   --track: rgba(242,234,214,0.08);
   color-scheme: dark;
@@ -261,6 +263,13 @@ p { margin: 0; }
 .cbar--self .cbar-fill { background: var(--self); box-shadow: 0 0 10px -3px var(--self);
   transition: left .9s cubic-bezier(.4,0,.2,1), width .9s cubic-bezier(.4,0,.2,1); }
 .block-badge.self { background: color-mix(in srgb, var(--self) 22%, transparent); color: var(--self); }
+
+/* Social Expression: the outward voice. Signed center-zero manner dims, no ghost -- there
+   is no baseline for a derived voice, only the current manner. */
+.cbar--voice .cbar-val { color: var(--voice); }
+.cbar--voice .cbar-fill { background: var(--voice); box-shadow: 0 0 10px -3px var(--voice);
+  transition: left .8s cubic-bezier(.4,0,.2,1), width .8s cubic-bezier(.4,0,.2,1); }
+.block-badge.voice { background: color-mix(in srgb, var(--voice) 20%, transparent); color: var(--voice); }
 
 .belief-list { display: flex; flex-direction: column; gap: 9px; }
 .belief-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline;
