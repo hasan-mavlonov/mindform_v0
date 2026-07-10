@@ -145,6 +145,44 @@ MORAL_M = {
     "LIB":   {"agency": 0.3, "novelty": 0.2},
 }
 
+# --- MOTIVATION & DRIVES: Self-Determination Theory needs (the motivational state) ---
+# A third layer beside TEMPERAMENT (innate OCEAN) and CHARACTER (dispositional Schwartz
+# values): the fast motivational STATE that makes a character *want*. Three SDT basic
+# needs, each carried as a TENSION in [0, 1] -- how unmet / loud the need is right now.
+# WHICH needs matter to a person is seeded from their formed values (DRIVE_SEED); how
+# starved each is rises and falls turn to turn (nodes/drives.py). tension is to its resting
+# weight what a trait x is to its baseline mu.
+DRIVES = ["autonomy", "competence", "relatedness"]
+DRIVE_NAMES = {
+    "autonomy":    "autonomy",       # to act from one's own volition, self-governed
+    "competence":  "competence",     # to be effective, to master and get it right
+    "relatedness": "relatedness",    # to connect, belong, and be cared for
+}
+# Weight seed: project the formed Schwartz values onto the three needs (rows = DRIVES,
+# cols = VALUES), same shape/role as M / VALUES_M. A need's chronic importance = how much
+# the character's values point at it, grounded in Schwartz's higher-order axes: autonomy
+# from openness-to-change (minus conservation), competence from self-enhancement, and
+# relatedness from self-transcendence + in-group conservation (minus dominance).
+DRIVE_SEED = {
+    "autonomy":    {"SD": 1.0, "ST": 0.5, "HE": 0.3, "PO": 0.2, "CO": -0.6, "TR": -0.5, "SE": -0.3},
+    "competence":  {"AC": 1.0, "PO": 0.6, "SD": 0.4, "ST": 0.3},
+    "relatedness": {"BE": 1.0, "UN": 0.6, "CO": 0.4, "TR": 0.4, "SE": 0.3, "PO": -0.3},
+}
+DRIVE_WEIGHT_FLOOR = 0.30   # SDT: all three needs matter to everyone (a blank character stays lively)
+DRIVE_WEIGHT_SLOPE = 0.60   # how strongly the formed values modulate a need's resting weight
+# Satisfaction signal: which appraisal dims FEED (+) or FRUSTRATE (-) each need. NOT the
+# values prior -- VALUES_M encodes the value an event *teaches* (a threat teaches security's
+# worth), which is not the need it *feeds*. rows = DRIVES, cols = appraisal dims.
+DRIVE_SAT = {
+    "autonomy":    {"agency": 0.8, "self_relevance": 0.1},
+    "competence":  {"outcome": 0.7, "agency": 0.2, "threat_challenge": 0.2},
+    "relatedness": {"social": 0.5, "valence": 0.3},
+}
+DRIVE_REGEN = 0.15          # per turn, an unmet need's tension relaxes back UP toward its weight
+DRIVE_SAT_GAIN = 0.35       # how strongly one satisfying/frustrating event moves a need's tension
+DRIVE_GAIN = 0.15           # how much active-need tension tilts the appraisal (matches COGNITION_GAIN)
+DRIVE_ACTIVE_THRESH = 0.55  # a need must be at least this loud to surface in the lens brief / tag
+
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3

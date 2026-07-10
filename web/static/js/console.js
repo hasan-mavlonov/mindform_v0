@@ -49,6 +49,7 @@
     traitBars: {},  // key -> { root, fill, ghost, val, glyph }
     valueBars: {},  // Schwartz values:   key -> { root, fill, val }
     moralBars: {},  // moral foundations: key -> { root, fill, val }
+    driveBars: {},  // SDT needs:         key -> { root, fill, ghost, val }
     reflTimer: null,
   };
 
@@ -245,6 +246,7 @@
     buildPushBars(snap);
     buildTraitBars(snap);
     buildCharacter(snap);
+    buildDrives(snap);
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
@@ -480,6 +482,54 @@
     renderHabits(snap);
   }
 
+  // ---- Motivation: the three SDT needs (fill = current tension/loudness, ghost tick =
+  // resting level; a green flash when this experience fed the need, magenta when it denied it).
+  function buildDrives(snap) {
+    const host = $("drive-bars");
+    if (!host) return;
+    host.innerHTML = ""; App.driveBars = {};
+    const drives = snap.drives || [];
+    if (!drives.length) {
+      host.appendChild(elc("p", "char-empty", "None yet — needs form as values do."));
+      return;
+    }
+    drives.forEach((d) => {
+      const root = elc("div", "cbar cbar--drive");
+      const top = elc("div", "cbar-top");
+      top.appendChild(elc("span", "cbar-name", d.name));
+      const val = elc("span", "cbar-val");
+      top.appendChild(val);
+      root.appendChild(top);
+      const track = elc("div", "cbar-track");
+      const ghost = elc("span", "cbar-ghost");
+      ghost.title = "resting level";
+      track.appendChild(ghost);
+      const fill = elc("span", "cbar-fill");
+      track.appendChild(fill);
+      root.appendChild(track);
+      host.appendChild(root);
+      App.driveBars[d.key] = { root, fill, ghost, val };
+    });
+    updateDrives(snap, false);
+  }
+
+  function updateDrives(snap, flash) {
+    (snap.drives || []).forEach((d) => {
+      const b = App.driveBars[d.key];
+      if (!b) return;
+      b.fill.style.left = "0%";                       // tension is unsigned: fill from the left
+      b.fill.style.width = clamp(d.tension || 0, 0, 1) * 100 + "%";
+      b.ghost.style.left = clamp(d.weight || 0, 0, 1) * 100 + "%";
+      b.val.textContent = (d.tension || 0).toFixed(2);
+      if (flash && Math.abs(d.sat || 0) > 0.001) {
+        const cls = d.sat > 0 ? "is-sat" : "is-flash";   // fed a need (green) / denied it (magenta)
+        b.root.classList.remove("is-sat", "is-flash");
+        void b.root.offsetWidth;                      // restart the animation
+        b.root.classList.add(cls);
+      }
+    });
+  }
+
   function renderLens(snap) {
     const el = $("lens-line");
     if (!el) return;
@@ -515,6 +565,7 @@
     { id: "valence",   field: "valence",          signed: true,  lens: true               },
     { id: "threat",    field: "threat_challenge", signed: true,  lens: true, negate: true  },
     { id: "novelty",   field: "novelty",          signed: false, lens: true               },
+    { id: "relevance", field: "self_relevance",   signed: false, lens: true               },
     { id: "intensity", field: "intensity",        signed: false, lens: false              },
   ];
 
@@ -642,6 +693,7 @@
       const moved = snap.formation ? snap.formation.key : biggestMove(prev, snap);
       updateTraitBars(snap, moved);         // violet bars ease to new values
       updateCharacter(snap, prev);          // values / moral / beliefs / habits
+      updateDrives(snap, true);             // SDT needs: tension + satisfy/frustrate flash
       renderRecall(snap);                   // the memories this message surfaced
       renderLens(snap);                     // how they're reading the world now
       renderMood(snap);

@@ -14,8 +14,9 @@ import json
 import os
 import re
 
-from core.config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL
+from core.config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL, DRIVES
 from nodes.character import default_character
+from nodes.drives import rest_drives
 
 PERSONALITY_FILE = "data/personality.json"
 CHARACTERS_DIR = "data/characters"
@@ -31,11 +32,13 @@ def default_temperament():
 
 def default_personality():
     """A blank character: born at a neutral temperament (traits start at mu = 0)."""
+    character = default_character()
     return {
         "identity": {},
         "temperament": default_temperament(),
         "traits": {d: 0.0 for d in BASIS},
-        "character": default_character(),
+        "character": character,
+        "drives": rest_drives(character["values"]),   # needs seeded at their resting level
         "experience_count": 0,
     }
 
@@ -71,6 +74,19 @@ def _ensure_character(personality):
     return personality
 
 
+def _ensure_drives(personality):
+    """Backfill the motivational drive state onto a pre-drives save (needs at rest = weight)."""
+    values = ((personality.get("character") or {}).get("values")) or {}
+    drives = personality.get("drives")
+    if not isinstance(drives, dict):
+        personality["drives"] = rest_drives(values)
+    else:
+        rest = rest_drives(values)
+        for d in DRIVES:                      # seed any missing need at its resting level
+            drives.setdefault(d, rest[d])
+    return personality
+
+
 def migrate(data):
     """Upgrade legacy formats and backfill temperament. Pure -- the caller persists."""
     if "traits" in data:                     # current shape (maybe pre-temperament)
@@ -87,7 +103,7 @@ def migrate(data):
             key = name_to_key.get(name)
             if key is not None:
                 personality["traits"][key] = value
-    return _ensure_character(_ensure_temperament(personality))
+    return _ensure_drives(_ensure_character(_ensure_temperament(personality)))
 
 
 def _read(path):

@@ -23,7 +23,10 @@ asymptotes once the reading matches the remembered tone) and temperament's pull-
 the perceive -> form -> perceive loop stable, so the schema reinforces without running away.
 """
 
-from core.config import COGNITION_GAIN, MEMORY_GAIN
+from core.config import (
+    COGNITION_GAIN, MEMORY_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT, DRIVE_ACTIVE_THRESH,
+)
+from core.impact import rule_pull
 
 _THRESH = 0.25       # how far from neutral a trait must be to colour the lens
 _TONE_THRESH = 0.20  # how clearly the remembered tone must lean to surface a brief / tag
@@ -99,14 +102,44 @@ def _memory_tilt(out, recalled):
     return out
 
 
+# --- the drive lens (Motivation): what they want bends the reading -------------
+def _drive_tilt(out, personality):
+    """Tilt ``out`` by the character's currently-active needs (``personality["drives"]``).
+
+    An event that bears on a loud need reads as more *self-relevant* (real goal-relevance,
+    replacing the crude proxy -- so it forms the character harder via salience); one that
+    MEETS an active need reads warmer, one that DENIES it reads as more threat. The tilt is
+    the tension-weighted engagement of the needs, small and clamped (``DRIVE_GAIN``).
+    """
+    drives = (personality or {}).get("drives") or {}
+    tension = {d: float((drives.get(d) or {}).get("tension", 0.0)) for d in DRIVES}
+    if sum(tension.values()) <= 0.0:
+        return out                                   # no active need -> no goal-relevance
+    signal = rule_pull(out, DRIVES, DRIVE_SAT)       # signed per-need engagement of this reading
+    # tension-weighted SUM (not mean): a LOUDER need bends the reading harder -- a starved
+    # need makes the event land harder. Clamped so it saturates rather than runs away.
+    signed = _clamp(sum(tension[d] * signal[d] for d in DRIVES), -1.0, 1.0)     # + meets / - denies
+    relevance = _clamp(sum(tension[d] * abs(signal[d]) for d in DRIVES), 0.0, 1.0)
+    g = DRIVE_GAIN
+    out["self_relevance"] = _clamp(out.get("self_relevance", 0.0) + g * relevance, 0.0, 1.0)
+    out["valence"] = _clamp(out.get("valence", 0.0) + g * signed, -1.0, 1.0)
+    # denying an active need adds threat (threat_challenge is signed, negative = threat)
+    out["threat_challenge"] = _clamp(
+        out.get("threat_challenge", 0.0) + g * min(0.0, signed), -1.0, 1.0)
+    return out
+
+
 def interpret(appraisal, personality, recalled=None):
-    """Return a copy of ``appraisal`` bent by who the character is and what they remember.
+    """Return a copy of ``appraisal`` bent by who the character is, what they remember, and
+    what they currently want.
 
     ``recalled`` is the list of similar past episodes (from ``memory.recall``) for this
-    experience; pass ``None`` / ``[]`` for the trait-only lens (offline-safe, Slice 1).
+    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The drive
+    tilt reads ``personality["drives"]`` and is a no-op when no need is active.
     """
     out = _trait_tilt(dict(appraisal), personality)
-    return _memory_tilt(out, recalled)
+    out = _memory_tilt(out, recalled)
+    return _drive_tilt(out, personality)
 
 
 # --- briefs: the same tilts as words, for the LLM prompt and the UI -----------
@@ -179,11 +212,46 @@ def _memory_tag(recalled):
     return ""
 
 
+# the loudest active need, as words for the LLM prompt and the UI
+_DRIVE_NEED_PHRASE = {
+    "autonomy": "freedom to act on their own terms",
+    "competence": "a sense of mastery and getting it right",
+    "relatedness": "connection and belonging",
+}
+_DRIVE_TAG = {
+    "autonomy": "needs autonomy",
+    "competence": "needs to prove themselves",
+    "relatedness": "needs connection",
+}
+
+
+def _active_need(personality):
+    """The loudest need, but only if it is loud enough to matter (``DRIVE_ACTIVE_THRESH``)."""
+    drives = (personality or {}).get("drives") or {}
+    if not drives:
+        return None
+    top = max(DRIVES, key=lambda d: float((drives.get(d) or {}).get("tension", 0.0)))
+    if float((drives.get(top) or {}).get("tension", 0.0)) < DRIVE_ACTIVE_THRESH:
+        return None
+    return top
+
+
+def _drive_brief(personality):
+    """The active need as a sentence for the LLM push prompt (empty when nothing is pressing)."""
+    need = _active_need(personality)
+    if not need:
+        return ""
+    return (f"Right now they most need {_DRIVE_NEED_PHRASE[need]}; weigh how much this "
+            "experience meets or denies that.")
+
+
 def lens(personality, recalled=None):
     """A short interpretive brief for the LLM push prompt -- how this person tends to read
-    events, from their strong traits and from how similar past experiences felt. Empty when
-    nothing tilts the reading (near-neutral character, no relevant memory)."""
-    parts = [_trait_brief(_lens_bits(personality)), _memory_brief(recalled)]
+    events, from their strong traits, from how similar past experiences felt, and from what
+    they currently want. Empty when nothing tilts the reading."""
+    parts = [_trait_brief(_lens_bits(personality)),
+             _memory_brief(recalled),
+             _drive_brief(personality)]
     return " ".join(p for p in parts if p)
 
 
@@ -191,4 +259,6 @@ def read_lens(personality, recalled=None):
     """The cognitive lens as a short display phrase (for the UI). Empty when nothing tilts."""
     bits = _lens_bits(personality)
     tag = _memory_tag(recalled)
-    return " · ".join(bits + ([tag] if tag else []))
+    need = _active_need(personality)
+    extras = ([tag] if tag else []) + ([_DRIVE_TAG[need]] if need else [])
+    return " · ".join(bits + extras)

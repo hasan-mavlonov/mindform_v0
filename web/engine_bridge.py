@@ -31,6 +31,10 @@ from nodes.character import (
     default_character, update_values, update_moral, note_habit, form_beliefs,
     higher_order, dominant_value,
 )
+from nodes.drives import (
+    refresh as refresh_drives, apply_event as apply_drive_event,
+    tensions as drive_tensions, read_drives, dominant_drive,
+)
 from core.personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
@@ -211,10 +215,21 @@ def _recalled_rows(recalled):
             for m in (recalled or [])]
 
 
+def _drive_rows(personality, before_tension=None):
+    """The three SDT needs: name, resting weight (the ghost tick), current tension, and this
+    turn's satisfy/frustrate delta -- ``sat`` > 0 = the event fed the need, < 0 = frustrated it."""
+    before = before_tension or {}
+    rows = read_drives(personality)
+    for row in rows:
+        prev = before.get(row["key"], row["tension"])
+        row["sat"] = prev - row["tension"]     # tension fell -> satisfied; rose -> frustrated
+    return rows
+
+
 def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, source=None,
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
-             moral_push=None, recalled=None):
+             moral_push=None, recalled=None, drive_before=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -237,6 +252,8 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
             personality, push=values_push, source=values_source,
             reasoning=values_reasoning, moral_push=moral_push,
         ),
+        "drives": _drive_rows(personality, drive_before),
+        "drive": dominant_drive(personality),
         "reply": reply,
     }
 
@@ -366,6 +383,11 @@ def run_turn(name, message):
     # Look back BEFORE interpreting, so memory can colour how this experience is read.
     embedding, seen, recalled = _recall(text, char_name)
 
+    # MOTIVATION: recompute each need's resting weight from the current values and let unmet
+    # needs rebuild pressure (regeneration) BEFORE interpreting, so active needs colour the read.
+    personality = refresh_drives(personality)
+    drive_before = drive_tensions(personality.get("drives"))   # rest level, to measure the event
+
     raw_appraisal = appraise(text)                                         # the base reading
     appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
     view = lens(personality, recalled=recalled)
@@ -390,6 +412,11 @@ def run_turn(name, message):
     # beliefs; a no-op without the LLM, which the next online turn catches up.
     personality = {**personality, "character": _form_beliefs(personality, char_name)}
 
+    # MOTIVATION: the interpreted experience now satisfies or frustrates the active needs
+    # (tension falls when a need is met, rises when it is denied) -- the loop-closing edge.
+    personality = {**personality,
+                   "drives": apply_drive_event(personality.get("drives"), appraisal)}
+
     save_character(personality)
 
     formation = _formation(before_traits, personality)
@@ -400,4 +427,5 @@ def run_turn(name, message):
         source=source, reasoning=reasoning, seen=seen, formation=formation, reply=reply,
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
+        drive_before=drive_before,
     )
