@@ -158,6 +158,69 @@ check("migrate backfills drives onto a pre-drives save, at rest = weight",
       "drives" in legacy and legacy["drives"]["competence"]["tension"] > legacy["drives"]["autonomy"]["tension"])
 
 
+# --- Slice 2: frustration bites harder than satisfaction soothes (SDT asymmetry) ---
+sat_event = {"outcome": 0.6, "agency": 0.3}      # feeds competence
+frust_event = {"outcome": -0.6, "agency": -0.3}  # frustrates it, equal magnitude
+relief = 0.5 - drives.apply_event(person({"competence": 0.5})["drives"], sat_event)["competence"]["tension"]
+harm = drives.apply_event(person({"competence": 0.5})["drives"], frust_event)["competence"]["tension"] - 0.5
+check("an equal-magnitude frustration moves tension harder than a satisfaction (asymmetry)",
+      harm > relief > 0)
+
+
+# --- Slice 2: motivated retrieval -- what they lack shapes what they remember -----
+def mem(text, score, **appraisal):
+    base = {"valence": 0.0, "intensity": 0.5, "novelty": 0.3, "agency": 0.0,
+            "social": 0.0, "outcome": 0.0, "self_relevance": 0.5, "threat_challenge": 0.0}
+    return {"text": text, "score": score, "appraisal": {**base, **appraisal}}
+
+# a warm-social memory and a mastery memory; the mastery one is (slightly) more similar
+social_mem = mem("laughing with friends", 0.40, social=0.9, valence=0.6)
+mastery_mem = mem("finally winning the contest", 0.45, outcome=0.9, agency=0.6)
+neutral_mem = mem("a walk in the rain", 0.44)
+
+lonely = person({"relatedness": 0.9, "competence": 0.1, "autonomy": 0.1})["drives"]
+striving = person({"relatedness": 0.1, "competence": 0.9, "autonomy": 0.1})["drives"]
+
+lonely_top = drives.recall_bias([mastery_mem, social_mem, neutral_mem], lonely)[0]
+striving_top = drives.recall_bias([mastery_mem, social_mem, neutral_mem], striving)[0]
+check("a connection-starved character surfaces the belonging memory first",
+      lonely_top["text"] == "laughing with friends")
+check("an achievement-starved character surfaces the mastery memory first",
+      striving_top["text"] == "finally winning the contest")
+check("the pulling need is named on the surfaced memory",
+      lonely_top.get("need") == "relatedness" and striving_top.get("need") == "competence")
+check("the displayed score stays the honest cosine (selection is biased, familiarity is not)",
+      lonely_top["score"] == 0.40 and striving_top["score"] == 0.45)
+
+quiet = person()["drives"]                       # all tensions 0 -> no motive, no re-rank
+unbiased = drives.recall_bias([mastery_mem, social_mem, neutral_mem], quiet)
+check("with no active need the order is untouched (pure pass-through)",
+      [m["text"] for m in unbiased] == ["finally winning the contest",
+                                        "laughing with friends", "a walk in the rain"])
+# a character AT REST (every need at its floor) has no motive either: sub-threshold
+# tensions must neither re-rank nor tag -- motivated retrieval needs a loud need
+at_rest = person({"relatedness": 0.30, "competence": 0.30, "autonomy": 0.30})["drives"]
+resting = drives.recall_bias([mastery_mem, social_mem, neutral_mem], at_rest)
+check("at rest (all needs at the floor) recall stays pure similarity",
+      [m["text"] for m in resting] == ["finally winning the contest",
+                                       "laughing with friends", "a walk in the rain"]
+      and all("need" not in m for m in resting))
+# just-below-threshold needs stay quiet even next to one loud need's re-rank
+one_loud = person({"relatedness": 0.9, "competence": 0.54, "autonomy": 0.54})["drives"]
+check("sub-threshold needs contribute nothing even when another need is loud",
+      drives.recall_bias([mastery_mem, social_mem], one_loud)[0]["text"]
+      == "laughing with friends")
+check("the pool is cut to k", len(drives.recall_bias([social_mem] * 8, lonely, k=3)) == 3)
+check("recall_bias survives empty and missing-appraisal input",
+      drives.recall_bias([], lonely) == []
+      and drives.recall_bias([{"text": "x", "score": 0.3}], lonely)[0]["text"] == "x")
+# the need chooses among related memories; it cannot make a weak match beat a strong one
+far = mem("laughing with friends", 0.30, social=0.9, valence=0.6)
+near = mem("the contract deadline", 0.80)
+check("semantic relevance stays primary (a weak match cannot leapfrog a strong one)",
+      drives.recall_bias([near, far], lonely)[0]["text"] == "the contract deadline")
+
+
 print()
 print("%d/%d checks passed." % (_checks - _failed, _checks))
 if _failed:

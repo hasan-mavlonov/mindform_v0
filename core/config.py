@@ -179,9 +179,20 @@ DRIVE_SAT = {
     "relatedness": {"social": 0.5, "valence": 0.3},
 }
 DRIVE_REGEN = 0.15          # per turn, an unmet need's tension relaxes back UP toward its weight
-DRIVE_SAT_GAIN = 0.35       # how strongly one satisfying/frustrating event moves a need's tension
+DRIVE_SAT_GAIN = 0.35       # how strongly one SATISFYING event relieves a need's tension
+# SDT's asymmetry: need frustration is not the mere absence of satisfaction -- it is the more
+# potent experience (Vansteenkiste & Ryan). A frustrating event raises tension harder than an
+# equally strong satisfying one relieves it.
+DRIVE_FRUST_GAIN = 0.50
 DRIVE_GAIN = 0.15           # how much active-need tension tilts the appraisal (matches COGNITION_GAIN)
 DRIVE_ACTIVE_THRESH = 0.55  # a need must be at least this loud to surface in the lens brief / tag
+# Motivated retrieval: what the character LACKS shapes what it remembers. Recall fetches a
+# wider candidate pool (RECALL_CANDIDATES), then the active needs re-rank it -- a memory that
+# bears on a starved need can outrank a slightly-more-similar neutral one. Multiplicative on
+# the cosine, so semantic relevance stays primary: the need chooses among genuinely related
+# memories, it cannot surface an unrelated one.
+DRIVE_RECALL_GAIN = 0.60    # how strongly need pressure re-ranks recall (0 = off)
+RECALL_CANDIDATES = 8       # candidate pool recall fetches before the need re-ranks and cuts
 
 # --- SELF-CONCEPT & IDENTITY: the reflective model of the self ---
 # A fourth layer: the character's model OF ITSELF, which can diverge from what it actually is.
