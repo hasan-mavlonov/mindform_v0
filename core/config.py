@@ -202,6 +202,22 @@ SELF_ESTEEM_GAIN = 0.10      # esteem buffer: high regard reads events as challe
 SELF_ACTIVE_THRESH = 0.25    # how strong esteem must be to surface a self tag in the lens
 SELF_INCONGRUENCE_THRESH = 0.25   # mean self-image-vs-actual gap that surfaces the "self-image lags" tag
 
+# --- SOCIAL EXPRESSION: the outward voice (a derived faculty, no stored state) ---
+# The output-side twin of the cognitive lens: where cognition bends how the world gets IN,
+# expression shapes how the self gets OUT. A communication STYLE on the interpersonal-
+# circumplex axes, derived fresh each turn from the SELF-VIEW (we perform who we THINK we
+# are -- Goffman), self-regard, and the collective pressure of unmet needs. It drives both
+# the LLM reply prompt (a "voice" brief) and the deterministic offline reply's shape.
+# rows = style dims; sources = self-image dims ("image"), esteem, and need pressure.
+STYLE_SOURCES = {
+    "assertion": {"image": {"E": 0.45, "A": -0.35}, "esteem": 0.30},   # plain assertion vs hedging
+    "warmth":    {"image": {"A": 0.50, "E": 0.25}},                    # taking care vs bluntness
+    "energy":    {"image": {"E": 0.50, "O": 0.25}, "esteem": 0.25},    # animated vs quiet/spare
+    "strain":    {"image": {"N": 0.60}, "esteem": -0.30, "pressure": 0.40},  # tension showing through
+}
+STYLE_THRESH = 0.25          # how far from neutral a style dim must be to shape the voice
+VOICE_MOOD_THRESH = 0.30     # how strongly this turn's (interpreted) mood must lean to be voiced
+
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3

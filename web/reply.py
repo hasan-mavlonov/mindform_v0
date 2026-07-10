@@ -2,14 +2,22 @@
 
 The MindForm engine forms personality from experiences; it does not itself hold a
 conversation. To make the console feel like *talking to someone*, this module
-generates a short first-person reply, colored by the character's current OCEAN
-traits and identity. It has no effect on personality formation -- the push that
-moves the traits comes solely from ``llm_impact.push_from_text`` on the user's
-message, computed in the bridge before this is ever called.
+generates a short first-person reply. It has no effect on personality formation --
+the push that moves the traits comes solely from ``llm_impact.push_from_text`` on
+the user's message, computed in the bridge before this is ever called.
+
+The voice is the SOCIAL EXPRESSION node made audible (``nodes/expression.py``):
+  * the character speaks from its SELF-VIEW (``self.image``), not its raw traits --
+    we perform who we think we are -- with a one-line "leak" naming the largest
+    image-vs-actual gap so the real trait can flash through;
+  * a "voice" brief (style dims + active need + dominant value + this turn's mood,
+    read from the INTERPRETED appraisal) tells the model HOW to carry itself;
+  * offline, ``expression.plain_reply`` shapes a deterministic line with the same
+    dims, so the fallback voice sounds like the character too.
 
 Resolution order (same discipline as the engine's push):
     1. the configured LLM (Google Gemma 4 by default) if a key is set  [primary]
-    2. a deterministic, trait-driven rule-based line                   [fallback]
+    2. the deterministic, style-driven ``expression.plain_reply``      [fallback]
 
 Gemma writes a ``<thought>`` block as plain text before its answer (the JSON paths
 survive it because they end in JSON; a free-text chat reply does not). It is the
@@ -23,8 +31,10 @@ the reply works fully offline and never hard-depends on the network.
 import logging
 
 from core.config import (
-    BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, strip_reasoning,
+    BASIS, BASIS_NAMES, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, LLM_LABEL,
+    SELF_INCONGRUENCE_THRESH, strip_reasoning,
 )
+from nodes.expression import voice as expression_voice, plain_reply
 
 log = logging.getLogger("mindform.web.reply")
 
@@ -32,10 +42,10 @@ log = logging.getLogger("mindform.web.reply")
 # are far likelier to narrate a <thought> block when the instruction is abstract.
 _REPLY_SYSTEM = """You are {name}. Speak ONLY as yourself, out loud, in the first person.
 
-Your personality right now (OCEAN traits, each -1..1, 0 = average) shapes HOW you
-talk -- your warmth or bluntness, your calm or your nerves. Never say the numbers,
-never break character:
-{traits}{identity}{memories}
+How you see yourself right now (the self you speak from; each -1..1, 0 = average)
+shapes HOW you talk -- your warmth or bluntness, your calm or your nerves. Never say
+the numbers, never break character:
+{self_view}{voice}{identity}{memories}
 
 Reply to what the user says in ONE or TWO short spoken sentences. Output only the
 words you say -- no analysis, no explanation, no <thought> or <thinking> block, no
@@ -52,12 +62,33 @@ _REPLY_SHOTS = [
 _RETRY_SUFFIX = "\n\n(Reply out loud now -- one or two sentences, in character, no analysis.)"
 
 
-def _describe_traits(personality):
-    """Human-readable trait lines for the prompt (e.g. 'extraversion +0.47')."""
-    traits = personality.get("traits", {})
-    return "\n".join(
-        f"- {BASIS_NAMES[k]}: {traits.get(k, 0.0):+.2f}" for k in BASIS
-    )
+def _describe_self_view(personality):
+    """The self they speak from: the self-image lines (falling back to the actual traits
+    when no self exists yet), plus a one-line 'leak' when the self-image has drifted from
+    reality -- the real trait is allowed to flash through."""
+    self_state = personality.get("self") or {}
+    image = self_state.get("image") if isinstance(self_state.get("image"), dict) else None
+    source = image or personality.get("traits", {})
+    lines = "\n".join(f"- {BASIS_NAMES[k]}: {source.get(k, 0.0):+.2f}" for k in BASIS)
+    if image:
+        traits = personality.get("traits", {})
+        gaps = {k: float(traits.get(k, 0.0)) - float(image.get(k, 0.0)) for k in BASIS}
+        mean_gap = sum(abs(g) for g in gaps.values()) / len(BASIS)
+        if mean_gap > SELF_INCONGRUENCE_THRESH:
+            worst = max(BASIS, key=lambda k: abs(gaps[k]))
+            direction = "higher" if gaps[worst] > 0 else "lower"
+            lines += (f"\n(In truth your {BASIS_NAMES[worst]} runs {direction} than you "
+                      "believe -- let it leak through only in flashes.)")
+    return lines
+
+
+def _describe_voice(personality, appraisal):
+    """The expression node's brief: how they carry themselves when they speak."""
+    lines = expression_voice(personality, appraisal)
+    if not lines:
+        return ""
+    body = "\n".join(f"- {line}" for line in lines)
+    return "\n\nHow you carry yourself when you speak (follow it, never mention it):\n" + body
 
 
 def _describe_identity(personality):
@@ -81,7 +112,7 @@ def _character_name(personality):
     return name or "yourself"
 
 
-def _llm_reply(personality, user_text, memories=None):
+def _llm_reply(personality, user_text, memories=None, appraisal=None):
     """Ask Gemma for an in-character line.
 
     gemma-4-31b-it writes its reasoning as a literal ``<thought>`` block in the
@@ -100,7 +131,8 @@ def _llm_reply(personality, user_text, memories=None):
     client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     system = _REPLY_SYSTEM.format(
         name=_character_name(personality),
-        traits=_describe_traits(personality),
+        self_view=_describe_self_view(personality),
+        voice=_describe_voice(personality, appraisal),
         identity=_describe_identity(personality),
         memories=_describe_memories(memories),
     )
@@ -125,80 +157,12 @@ def _llm_reply(personality, user_text, memories=None):
     raise RuntimeError("model returned only a reasoning block, no reply")
 
 
-# --- Deterministic fallback: trait-driven, dependency-free, always available ---
-# In the spirit of response.py, but two-part so it stays lively offline: a
-# reaction to *what happened* (read lightly from the message's sentiment, varied
-# per message so repeats don't read identically) + an aside colored by the
-# character's strongest trait. No model, no network.
-_POS = {"party", "fun", "laughed", "danced", "loved", "win", "won", "great",
-        "joy", "proud", "friends", "celebrated", "happy", "success", "amazing",
-        "enjoyed", "confident", "excited", "warm", "kind", "together", "praised"}
-_NEG = {"failed", "alone", "anxious", "scared", "afraid", "lost", "hurt", "cried",
-        "panic", "sad", "lonely", "rejected", "sick", "angry", "ashamed",
-        "terrified", "avoided", "isolated", "exam", "argued", "embarrassed"}
-
-_REACTIONS = {
-    "pos": [
-        "That actually felt good -- better than I expected.",
-        "Something in me opened up a little there.",
-        "I didn't want that to end.",
-    ],
-    "neg": [
-        "That one sat heavy with me.",
-        "I'm still carrying it, if I'm honest.",
-        "It shook me more than I'd like to admit.",
-    ],
-    "neutral": [
-        "I keep turning that over.",
-        "It left a quiet mark.",
-        "I'm still working out how it sits with me.",
-    ],
-}
-
-_HIGH = {
-    "N": "and a part of me is bracing for the next thing already.",
-    "E": "and now I just want to be around people, doing more.",
-    "O": "and I can't help wondering what else is underneath it.",
-    "A": "and mostly I hope everyone else came through it okay.",
-    "C": "so I'd rather make sense of it and handle it properly.",
-}
-_LOW = {
-    "N": "but it doesn't rattle me much -- I feel steady.",
-    "E": "though I'd rather sit with it on my own a while.",
-    "O": "and I'll just take it as it is, no need to overthink it.",
-    "A": "and I'll say what I think about it plainly.",
-    "C": "and I'm easy about it -- no need to make a system of it.",
-}
-
-
-def _sentiment(text):
-    tokens = set(text.lower().replace(".", " ").replace(",", " ").split())
-    pos, neg = len(tokens & _POS), len(tokens & _NEG)
-    if pos > neg:
-        return "pos"
-    if neg > pos:
-        return "neg"
-    return "neutral"
-
-
-def _rule_based_reply(personality, user_text):
-    reactions = _REACTIONS[_sentiment(user_text)]
-    lead = reactions[hash(user_text) % len(reactions)]   # varied per message
-
-    traits = personality.get("traits", {})
-    key = max(BASIS, key=lambda k: abs(traits.get(k, 0.0)))
-    value = traits.get(key, 0.0)
-    if abs(value) < 0.12:                                 # too neutral to voice
-        return lead
-    aside = (_HIGH if value >= 0 else _LOW)[key]
-    return lead.rstrip(" .") + " -- " + aside
-
-
-def generate_reply(personality, user_text, memories=None):
-    """Best-available in-character reply, optionally grounded in recalled memories.
-    Never raises; never touches traits."""
+def generate_reply(personality, user_text, memories=None, appraisal=None):
+    """Best-available in-character reply, optionally grounded in recalled memories and this
+    turn's INTERPRETED appraisal (how the event landed through their lens). Returns
+    ``(text, source)`` with source in {LLM label, "rule"}. Never raises; never touches traits."""
     try:
-        return _llm_reply(personality, user_text, memories)
+        return _llm_reply(personality, user_text, memories, appraisal), LLM_LABEL
     except Exception as exc:
-        log.info("LLM reply unavailable (%s); using rule-based voice", exc)
-        return _rule_based_reply(personality, user_text)
+        log.info("LLM reply unavailable (%s); using the offline voice", exc)
+        return plain_reply(personality, user_text, appraisal), "rule"
