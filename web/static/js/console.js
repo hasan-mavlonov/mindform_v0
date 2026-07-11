@@ -549,7 +549,8 @@
     const s = snap.self;
     if (!s || !s.image) return [];
     const rows = [{ key: "esteem", label: "self-worth", value: s.esteem, ghost: s.base, kind: "esteem" }];
-    s.image.forEach((r) => rows.push({ key: r.key, label: r.label, value: r.image, ghost: r.actual, kind: "image" }));
+    s.image.forEach((r) => rows.push({ key: r.key, label: r.label, value: r.image, ghost: r.actual,
+                                       ideal: r.ideal, kind: "image" }));
     return rows;
   }
 
@@ -574,11 +575,17 @@
       const ghost = elc("span", "cbar-ghost");
       ghost.title = r.kind === "esteem" ? "baseline" : "who they actually are";
       track.appendChild(ghost);
+      let ideal = null;
+      if (r.kind === "image") {
+        ideal = elc("span", "cbar-ideal");           // who they WANT to be (from their values)
+        ideal.title = "who they want to be";
+        track.appendChild(ideal);
+      }
       const fill = elc("span", "cbar-fill");
       track.appendChild(fill);
       root.appendChild(track);
       host.appendChild(root);
-      App.selfBars[r.key] = { root, fill, ghost, val };
+      App.selfBars[r.key] = { root, fill, ghost, ideal, val };
     });
     updateSelf(snap, false);
   }
@@ -593,6 +600,12 @@
       const f = centerFill(r.value);
       b.fill.style.left = f.left + "%"; b.fill.style.width = f.width + "%";
       b.ghost.style.left = pct(r.ghost) + "%";
+      if (b.ideal) {
+        // the aspired self: shown only once the values have formed an ideal worth holding
+        const show = r.ideal != null && Math.abs(r.ideal) >= 0.05;
+        b.ideal.style.display = show ? "" : "none";
+        if (show) b.ideal.style.left = pct(r.ideal) + "%";
+      }
       b.val.textContent = fmt(r.value);
       if (flash) {
         // esteem flashes on its own rise/fall; the self-image bars flash on whether the

@@ -22,12 +22,21 @@ Per turn (``engine_bridge.run_turn``), mirroring drives:
   * ``apply_event`` -- AFTER formation: esteem responds to the interpreted experience and the
                        self-image drifts toward the just-formed traits (Bem + Swann).
 
-Only ``image`` and ``esteem`` are persisted; ``base`` is derived each turn. Pure arithmetic
-(no LLM, no numpy) -- it degrades exactly like every other node.
+Slice 2 adds the ASPIRED selves (Higgins' self-discrepancy theory), all derived, no new
+state: the IDEAL self is who the formed values say they want to be (``SELF_IDEAL_M``), the
+OUGHT self who the moral foundations say they should be (``SELF_OUGHT_M``). Falling short
+of the ideal -- the image-vs-ideal gap, weighted by how strongly the ideal is held --
+chronically depresses the esteem baseline (DEJECTION, ``effective_base``); falling short
+of the ought adds vigilance to the reading (AGITATION, cognition's ``_self_tilt``). You can
+only fall short of an ideal you actually hold: a blank character has no gap.
+
+Only ``image`` and ``esteem`` are persisted; every baseline and aspiration is derived each
+turn. Pure arithmetic (no LLM, no numpy) -- it degrades exactly like every other node.
 """
 
 from core.config import (
     BASIS, BASIS_NAMES, M, SELF_BASE, SCHEMA_LEARN, SCHEMA_RESIST, ESTEEM_GAIN, ESTEEM_RELAX,
+    SELF_IDEAL_M, SELF_OUGHT_M, SELF_GAP_SLOPE,
 )
 from core.impact import rule_pull
 from nodes.drives import satisfaction as drive_satisfaction
@@ -49,6 +58,47 @@ def seed_base(personality):
     return _clamp(base)
 
 
+# --- Slice 2: the aspired selves (Higgins' self-discrepancy theory) -------------
+def ideal_self(personality):
+    """Who their formed VALUES say they want to be: the aspired OCEAN self, derived each
+    turn (never stored). A blank character (values at 0) aspires to nothing yet."""
+    values = ((personality.get("character") or {}).get("values")) or {}
+    return rule_pull(values, BASIS, SELF_IDEAL_M)
+
+
+def ought_self(personality):
+    """Who their MORAL foundations say they should be (the duty-side aspired self)."""
+    moral = ((personality.get("character") or {}).get("moral")) or {}
+    return rule_pull(moral, BASIS, SELF_OUGHT_M)
+
+
+def _weighted_gap(target, image):
+    """How far the self-image falls short of an aspired self, weighted by how strongly
+    each dimension of the aspiration is held -- you can only fall short of an ideal you
+    actually hold, so a blank aspiration yields no gap."""
+    total = sum(abs(target[k]) for k in BASIS)
+    if total <= 0.0:
+        return 0.0
+    return sum(abs(target[k]) * abs(target[k] - image[k]) for k in BASIS) / total
+
+
+def aspiration_gap(personality):
+    """The actual-vs-IDEAL discrepancy (image vs who they want to be): dejection's source."""
+    return _weighted_gap(ideal_self(personality), _image(personality.get("self")))
+
+
+def ought_gap(personality):
+    """The actual-vs-OUGHT discrepancy (image vs who they should be): agitation's source."""
+    return _weighted_gap(ought_self(personality), _image(personality.get("self")))
+
+
+def effective_base(personality):
+    """The esteem baseline actually lived with: the dispositional set-point, chronically
+    depressed by falling short of who they want to be (Higgins: the ideal-gap pulls the
+    floor DOWN only; acceptance and mastery lift esteem above it, never the gap)."""
+    return _clamp(seed_base(personality) - SELF_GAP_SLOPE * aspiration_gap(personality))
+
+
 def default_self(personality):
     """A newborn self: the self-image is an accurate mirror of the birth traits, and self-regard
     sits at its dispositional baseline -- divergence is then EARNED by living."""
@@ -62,10 +112,11 @@ def _image(self_state):
 
 
 def refresh(personality):
-    """Relax self-esteem toward its dispositional baseline (the 'chronic regard re-asserts' step,
-    mirroring drives.refresh / updater.relax_to_temperament). Returns a new personality."""
+    """Relax self-esteem toward its EFFECTIVE baseline -- the dispositional set-point,
+    depressed by how far the self-image falls short of the ideal self (Higgins dejection).
+    The 'chronic regard re-asserts' step, mirroring drives.refresh. Returns a new personality."""
     self_state = personality.get("self") or default_self(personality)
-    base = seed_base(personality)
+    base = effective_base(personality)
     e = float(self_state.get("esteem", 0.0))
     relaxed = _clamp(e + ESTEEM_RELAX * (base - e))
     return {**personality, "self": {**self_state, "esteem": relaxed}}
@@ -113,13 +164,19 @@ def self_signal(self_state, appraisal):
 # --- Read-outs -----------------------------------------------------------------
 def read_self(personality):
     """Self-concept rows for the UI: per-OCEAN self-image vs the actual trait (the gap is
-    self-deception), plus esteem and its dispositional baseline."""
+    self-deception) and vs the IDEAL self (the gap is aspiration), plus esteem against its
+    EFFECTIVE baseline (the dispositional set-point, depressed by falling short)."""
     self_state = personality.get("self") or default_self(personality)
     img = _image(self_state)
     traits = personality.get("traits") or {}
-    rows = [{"key": k, "label": BASIS_NAMES[k], "image": img[k], "actual": float(traits.get(k, 0.0))}
+    ideal = ideal_self(personality)
+    rows = [{"key": k, "label": BASIS_NAMES[k], "image": img[k],
+             "actual": float(traits.get(k, 0.0)), "ideal": ideal[k]}
             for k in BASIS]
-    return {"image": rows, "esteem": float(self_state.get("esteem", 0.0)), "base": seed_base(personality)}
+    return {"image": rows, "esteem": float(self_state.get("esteem", 0.0)),
+            "base": effective_base(personality),
+            "aspiration_gap": aspiration_gap(personality),
+            "ought_gap": ought_gap(personality)}
 
 
 def incongruence(personality):

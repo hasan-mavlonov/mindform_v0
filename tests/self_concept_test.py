@@ -164,6 +164,75 @@ check("a neutral, accurate self -> no self tag",
       read_lens(person()) == "")
 
 
+# --- Slice 2: the ideal and ought selves (Higgins) -------------------------------
+def person2(image=None, values=None, moral=None, mu=None, esteem=0.0):
+    zero = {k: 0.0 for k in BASIS}
+    return {
+        "traits": dict(zero),
+        "temperament": {"mu": {**zero, **(mu or {})}},
+        "character": {"values": values or {}, "moral": moral or {}},
+        "self": {"image": {**zero, **(image or {})}, "esteem": esteem},
+    }
+
+# who the values say they want to be
+check("achievement shapes an ideal of discipline (C leads the ideal)",
+      max(sc.ideal_self(person2(values={"AC": 1.0})).items(), key=lambda kv: abs(kv[1]))[0] == "C")
+check("benevolence shapes an ideal of warmth (A leads)",
+      max(sc.ideal_self(person2(values={"BE": 1.0})).items(), key=lambda kv: abs(kv[1]))[0] == "A")
+check("prizing security means aspiring to calm (ideal N negative)",
+      sc.ideal_self(person2(values={"SE": 1.0}))["N"] < 0)
+
+# you can only fall short of an ideal you actually hold
+check("a blank character has no aspiration gap (and no phantom dejection)",
+      sc.aspiration_gap(person2()) == 0.0 and sc.ought_gap(person2()) == 0.0)
+check("even a strong temperament creates no gap while no values are formed",
+      sc.aspiration_gap(person2(mu={"N": 0.8}, image={"N": 0.8})) == 0.0)
+
+striver = person2(values={"BE": 0.8})                        # wants to be warm...
+check("holding an unmet ideal opens the aspiration gap",
+      sc.aspiration_gap(striver) > 0.2)
+arrived = person2(values={"BE": 0.8},
+                  image={"A": sc.ideal_self(person2(values={"BE": 0.8}))["A"]})
+check("living up to the ideal closes the gap",
+      sc.aspiration_gap(arrived) < 0.05)
+
+# dejection: the gap chronically depresses the esteem baseline
+check("falling short depresses the effective esteem baseline",
+      sc.effective_base(striver) < sc.seed_base(striver))
+check("meeting the ideal restores the dispositional baseline",
+      abs(sc.effective_base(arrived) - sc.seed_base(arrived)) < 0.03)
+low = striver
+for _ in range(20):
+    low = sc.refresh(low)
+check("esteem settles at the depressed baseline (chronic dejection, bounded)",
+      abs(low["self"]["esteem"] - sc.effective_base(striver)) < 0.05
+      and -1.0 < low["self"]["esteem"] < 0.0)
+
+# agitation: falling short of the OUGHT self reads the world as more threatening
+neutral_evt = {"valence": 0.0, "threat_challenge": 0.0, "intensity": 0.5, "novelty": 0.3,
+               "agency": 0.0, "social": 0.0, "outcome": 0.0, "self_relevance": 0.5}
+dutiful_short = person2(moral={"CARE": 0.9, "AUTH": 0.6})     # ought to be kind+dutiful, image is not
+ought_a = sc.ought_self(dutiful_short)
+dutiful_met = person2(moral={"CARE": 0.9, "AUTH": 0.6},
+                      image={"A": ought_a["A"], "C": ought_a["C"], "N": ought_a["N"], "O": ought_a["O"]})
+check("falling short of the ought reads the same event as more threatening (agitation)",
+      interpret(neutral_evt, dutiful_short)["threat_challenge"]
+      < interpret(neutral_evt, dutiful_met)["threat_challenge"])
+
+# the lens speaks the discrepancies
+check("a wide aspiration gap surfaces the 'falling short' tag",
+      "falling short" in read_lens(striver))
+check("a wide ought gap surfaces the 'ought' tag",
+      "ought" in read_lens(dutiful_short))
+check("no discrepancy -> no discrepancy tags", read_lens(person2()) == "")
+
+# read-outs
+rs = sc.read_self(striver)
+check("read_self exposes the ideal per dimension and both gaps",
+      all("ideal" in r for r in rs["image"])
+      and rs["aspiration_gap"] > 0.2 and rs["base"] == sc.effective_base(striver))
+
+
 print()
 print("%d/%d checks passed." % (_checks - _failed, _checks))
 if _failed:
