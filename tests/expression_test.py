@@ -165,6 +165,64 @@ check("read_expression exposes four labelled style rows + the line",
       and isinstance(ex["line"], str))
 
 
+# --- Slice 2: style as a FORMED layer, shaped by reception -------------------------
+from nodes.expression import style_target, default_expression, refresh, apply_event
+from core.personality import default_personality, migrate
+
+born = default_personality()
+check("a newborn's formed style sits AT its derived target (mannerisms are earned)",
+      born["expression"]["style"] == style_target(born))
+legacy = migrate({"traits": {"O": 0, "C": 0, "E": 0.5, "A": 0, "N": 0}})
+check("migrate backfills the formed style onto a pre-slice save",
+      "expression" in legacy and legacy["expression"]["style"] == style_target(legacy))
+
+# manner LAGS inner change: the self turns confident, the voice follows slowly
+lagger = person({"E": 0.6, "A": 0.2}, esteem=0.7)          # inner state calls for energy
+lagger["expression"] = {"style": {d: 0.0 for d in STYLE_DIMS}}   # but the manner is still flat
+one = refresh(lagger)["expression"]["style"]["energy"]
+target_e = style_target(lagger)["energy"]
+check("the formed manner moves only partway toward the target per turn (lag)",
+      0.0 < one < target_e)
+p = lagger
+for _ in range(30):
+    p = refresh(p)
+check("under a steady inner state the manner converges to its target",
+      abs(p["expression"]["style"]["energy"] - target_e) < 0.02)
+
+# operant shaping: the manner actually spoken with is answered
+flatp = person()
+flatp["expression"] = {"style": {d: 0.0 for d in STYLE_DIMS}}
+spoken_warm = {"assertion": 0.0, "warmth": 0.6, "energy": 0.0, "strain": 0.0}
+warmer = apply_event(flatp, spoken_warm, 0.8)["expression"]["style"]["warmth"]
+colder = apply_event(flatp, spoken_warm, -0.8)["expression"]["style"]["warmth"]
+check("a warm answer entrenches the warmth that was spoken", warmer > 0)
+check("a rebuff extinguishes the warmth that was spoken", colder < 0)
+spoken_blunt = {"assertion": 0.0, "warmth": -0.6, "energy": 0.0, "strain": 0.0}
+blunter = apply_event(flatp, spoken_blunt, 0.8)["expression"]["style"]["warmth"]
+check("rewarded bluntness deepens (the emitted manner is what is reinforced)", blunter < 0)
+check("no reception -> no shaping",
+      apply_event(flatp, spoken_warm, None)["expression"]["style"] == flatp["expression"]["style"])
+check("no recorded act -> no shaping",
+      apply_event(flatp, None, 0.8)["expression"]["style"] == flatp["expression"]["style"])
+p = flatp
+for _ in range(40):
+    p = apply_event(p, spoken_warm, 0.9)
+check("repeated reinforcement asymptotes inside the bounds (diminishing returns)",
+      0.9 < p["expression"]["style"]["warmth"] <= 1.0)
+
+# the voice SPEAKS the formed manner, not the derivation
+mannered = person()                                        # blank inner state (target ~0)
+mannered["expression"] = {"style": {"assertion": 0.0, "warmth": 0.6, "energy": 0.0, "strain": 0.0}}
+check("the learned manner is what the voice reads (formed warmth sounds warm)",
+      "warm" in read_voice(mannered)
+      and "How are you holding up?" in plain_reply(mannered, MSG, appr(valence=-0.5)))
+ex2 = read_expression(mannered, appr(), before={"style": {"warmth": 0.5}})
+warm_row = next(r for r in ex2["style"] if r["key"] == "warmth")
+check("read_expression exposes the target tick and this turn's shaped delta",
+      warm_row["target"] == style_target(mannered)["warmth"]
+      and abs(warm_row["delta"] - 0.1) < 1e-9)
+
+
 print()
 print("%d/%d checks passed." % (_checks - _failed, _checks))
 if _failed:

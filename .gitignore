@@ -23,3 +23,6 @@ env/
 
 # Secrets / local environment (keep .env.example tracked)
 .env
+
+# Runtime state: saved characters + their memory logs/sidecars (never source)
+data/

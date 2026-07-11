@@ -21,15 +21,20 @@ Two mouths read one derivation:
                          (hedged openers, a reach toward the other, a length budget, a worry
                          tail), so two characters sound different with no LLM at all.
 
-Deliberately DERIVED, not formed: every ingredient is already formed state one layer down,
-so stored style would just be a cache that can fall out of sync. Style as its own formed
-layer (entrenched or extinguished by how utterances actually land) needs the interlocutor's
-NEXT message as the reception signal -- that is the intended Slice 2, alongside Behavior.
+Slice 2 made the style a FORMED layer: the Slice-1 derivation (``style_target``) is now the
+SET-POINT -- what the inner state calls for -- and the persisted style
+(``personality["expression"]``) forms around it. It relaxes toward the target each turn
+(manner lags inner change: the newly-confident character still sounds tentative for a
+while) and is operantly shaped by RECEPTION (``behavior.reception`` -- the next incoming
+message read as how the last utterance landed): the manner actually spoken with is
+entrenched when it is answered warmly and extinguished when it is rebuffed. The gap
+between the formed style and its target is a learned mannerism, rendered as a ghost tick.
 Pure arithmetic; no LLM, no numpy -- it degrades exactly like every other node.
 """
 
 from core.config import (
     BASIS, STYLE_SOURCES, STYLE_THRESH, VOICE_MOOD_THRESH, VALUES_NAMES,
+    STYLE_TRACK, STYLE_LEARN,
 )
 from nodes.drives import tensions as drive_tensions
 from nodes.character import dominant_value
@@ -65,8 +70,10 @@ def _pressure(personality):
     return _clamp(2.0 * (mean - 0.5), 0.0, 1.0)
 
 
-def style(personality):
-    """The four style dims, signed [-1, 1], derived fresh from the layers (no stored state)."""
+def style_target(personality):
+    """What the inner state CALLS FOR: the four style dims, signed [-1, 1], derived fresh
+    from the layers (self-view + esteem + need pressure). Slice 2 made this the SET-POINT
+    the formed style relaxes toward -- the gap between them is a learned mannerism."""
     img = _self_image(personality)
     esteem = float(((personality or {}).get("self") or {}).get("esteem", 0.0))
     press = _pressure(personality)
@@ -77,6 +84,55 @@ def style(personality):
         v += src.get("pressure", 0.0) * press
         out[dim] = _clamp(v)
     return out
+
+
+def style(personality):
+    """The manner they actually speak with: the FORMED style (``personality["expression"]``)
+    when it exists, falling back to the derived target for pre-Slice-2 saves -- so every
+    reader (the voice brief, the offline mouth, the act record) speaks the learned manner."""
+    formed = ((personality or {}).get("expression") or {}).get("style")
+    if isinstance(formed, dict):
+        return {d: _clamp(float(formed.get(d, 0.0))) for d in STYLE_DIMS}
+    return style_target(personality)
+
+
+def default_expression(personality):
+    """Born speaking as the inner state calls for -- the formed style starts AT its target;
+    divergence (a learned mannerism) is earned by how utterances actually land."""
+    return {"style": style_target(personality)}
+
+
+def refresh(personality):
+    """Relax the formed style toward what the inner state currently calls for (the derived
+    target) -- manner lags inner change, so a newly-confident character still sounds
+    tentative for a few turns. Mirrors the house pull-to-set-point."""
+    expression = personality.get("expression") or default_expression(personality)
+    formed = {d: float((expression.get("style") or {}).get(d, 0.0)) for d in STYLE_DIMS}
+    target = style_target(personality)
+    relaxed = {d: _clamp(formed[d] + STYLE_TRACK * (target[d] - formed[d])) for d in STYLE_DIMS}
+    return {**personality, "expression": {**expression, "style": relaxed}}
+
+
+def apply_event(personality, spoken_style, reception):
+    """Operant shaping: the manner ACTUALLY SPOKEN WITH last turn (``spoken_style``, frozen
+    in the act record) is entrenched by a warm answer and extinguished by a rebuff.
+
+        style[d] += STYLE_LEARN * reception * spoken[d] * (1 - |style[d]|)
+
+    The signed product is correct here (unlike behavior's approach credit): the style IS
+    the emitted response -- if bluntness got answered warmly, bluntness worked and deepens;
+    if warmth was rebuffed, warmth fades. No act or no reception -> no shaping. Bounded by
+    diminishing returns + the relax-to-target pull in ``refresh``."""
+    if reception is None or not spoken_style:
+        return personality
+    expression = personality.get("expression") or default_expression(personality)
+    formed = {d: float((expression.get("style") or {}).get(d, 0.0)) for d in STYLE_DIMS}
+    shaped = {
+        d: _clamp(formed[d] + STYLE_LEARN * reception * float(spoken_style.get(d, 0.0))
+                  * (1.0 - abs(formed[d])))
+        for d in STYLE_DIMS
+    }
+    return {**personality, "expression": {**expression, "style": shaped}}
 
 
 def _mood_family(appraisal):
@@ -305,10 +361,17 @@ def read_voice(personality, appraisal=None):
     return " · ".join(bits)
 
 
-def read_expression(personality, appraisal=None):
-    """Expression snapshot for the UI: the four style dims + the voice line."""
+def read_expression(personality, appraisal=None, before=None):
+    """Expression snapshot for the UI: per-dim the FORMED manner (fill), the derived target
+    (ghost tick -- the gap is a learned mannerism), and this turn's shaped delta (for the
+    flash), plus the voice line."""
     s = style(personality)
+    target = style_target(personality)
+    before_style = {d: float(((before or {}).get("style") or {}).get(d, s[d]))
+                    for d in STYLE_DIMS}
     return {
-        "style": [{"key": d, "label": STYLE_LABELS[d], "value": s[d]} for d in STYLE_DIMS],
+        "style": [{"key": d, "label": STYLE_LABELS[d], "value": s[d],
+                   "target": target[d], "delta": s[d] - before_style[d]}
+                  for d in STYLE_DIMS],
         "line": read_voice(personality, appraisal),
     }
