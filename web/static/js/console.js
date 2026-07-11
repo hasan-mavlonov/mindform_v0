@@ -798,6 +798,11 @@
   function renderMood(snap) {
     const a = snap.appraisal || null;                  // interpreted (through their eyes)
     const raw = snap.appraisal_raw || null;            // the base reading, before the lens
+    const cap = $("mood-cap");
+    if (cap) {
+      const src = snap.appraisal_source;
+      cap.textContent = "How they read it" + (src ? " · " + (src === "offline" ? "offline" : src) : "");
+    }
     MOOD_METERS.forEach((m) => {
       const fill = $("mood-" + m.id);
       if (!fill) return;

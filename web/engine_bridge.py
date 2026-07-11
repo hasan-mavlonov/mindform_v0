@@ -22,6 +22,8 @@ from core.config import (
     RECALL_CANDIDATES,
 )
 from core.appraisal import appraise
+from nodes.llm_appraisal import appraise_from_text
+from core.appraisal_log import maybe_log as log_appraisal_row
 from nodes.cognition import interpret, lens, read_lens
 from nodes.llm_impact import push_from_text
 from nodes.values import values_push_from_text
@@ -267,7 +269,8 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
              moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None,
-             reply_source=None, behavior_before=None, expression_before=None):
+             reply_source=None, behavior_before=None, expression_before=None,
+             appraisal_source=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -279,6 +282,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         "push": _push_rows(push),
         "appraisal": appraisal,
         "appraisal_raw": appraisal_raw,
+        "appraisal_source": appraisal_source,
         "source": source,
         "reasoning": reasoning or "",
         "seen": seen,
@@ -455,7 +459,11 @@ def run_turn(name, message):
     personality = refresh_expression(personality)
     expression_before = dict(personality.get("expression") or {})
 
-    raw_appraisal = appraise(text)                                         # the base reading
+    # PERCEPTION: the base reading -- LLM-primary (offline head/lexicon fallback). Every
+    # LLM-labelled reading is also logged as (text -> appraisal) training data, so the
+    # offline appraiser learns from the online one with use (distillation).
+    raw_appraisal, appraisal_source = appraise_from_text(text)
+    log_appraisal_row(text, raw_appraisal, appraisal_source)
     appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
     self_sig = self_signal(personality.get("self"), appraisal)  # did it affirm / contradict the self-view
     view = lens(personality, recalled=recalled)
@@ -538,5 +546,5 @@ def run_turn(name, message):
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
         drive_before=drive_before, self_before=self_before, self_sig=self_sig,
         reply_source=reply_source, behavior_before=behavior_before,
-        expression_before=expression_before,
+        expression_before=expression_before, appraisal_source=appraisal_source,
     )
