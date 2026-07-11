@@ -112,6 +112,12 @@ def create_memory(text, embedding, appraisal, push, personality_after, name=None
         "push": push,
         "traits_after": read_traits(personality_after),
     }
+    # the stance this experience was met WITH (behavior's carried set gated its intake) --
+    # stored per record so the act history accrues in the hub
+    stance = ((personality_after.get("behavior") or {}).get("set")) or {}
+    if stance:
+        memory["stance"] = {"tendency": stance.get("tendency", 0.0),
+                            "mode": stance.get("mode", "steady")}
     memories = load_memories(name)
     memories.append(memory)
     _write_memories(memories, name)

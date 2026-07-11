@@ -52,6 +52,7 @@
     driveBars: {},  // SDT needs:         key -> { root, fill, ghost, val }
     selfBars: {},   // self-concept:      key -> { root, fill, ghost, val }
     voiceBars: {},  // expression style:  key -> { root, fill, val, last }
+    behavBars: {},  // behavior systems:  key -> { root, fill, ghost, val }
     reflTimer: null,
   };
 
@@ -251,6 +252,7 @@
     buildDrives(snap);
     buildSelf(snap);
     buildVoice(snap);
+    buildBehavior(snap);
     buildSuggestions();
     renderHeader(snap);
     renderMood(snap);
@@ -329,7 +331,11 @@
     });
     const src = snap.source ? `via ${snap.source}` : "";
     const seen = snap.seen != null ? ` · seen ${snap.seen} like it before` : "";
-    $("push-meta").innerHTML = src ? `<b>${src}</b>${seen}` : "";
+    // the intake gate: how hard this experience landed, given the stance they carried
+    const intake = snap.behavior && snap.behavior.intake;
+    const gate = (intake && Math.abs(intake - 1) > 0.01)
+      ? ` · landed ×${intake.toFixed(2)} — ${intake > 1 ? "leaning in" : "holding back"}` : "";
+    $("push-meta").innerHTML = src ? `<b>${src}</b>${seen}${gate}` : "";
   }
 
   function buildTraitBars(snap) {
@@ -654,6 +660,65 @@
     }
   }
 
+  // ---- Behavior: the enacted stance -- two Gray systems (approach/inhibition) with their
+  // trait-anchored dispositions as ghost ticks, the carried leaning, and this turn's
+  // reception ("their reach was met" / "rebuffed").
+  function buildBehavior(snap) {
+    const host = $("behavior-bars");
+    if (!host) return;
+    host.innerHTML = ""; App.behavBars = {};
+    const rows = (snap.behavior && snap.behavior.sensitivities) || [];
+    rows.forEach((r) => {
+      const root = elc("div", "cbar cbar--behav");
+      const top = elc("div", "cbar-top");
+      top.appendChild(elc("span", "cbar-name", r.label));
+      const val = elc("span", "cbar-val");
+      top.appendChild(val);
+      root.appendChild(top);
+      const track = elc("div", "cbar-track");
+      track.appendChild(elc("span", "cbar-zero"));
+      const ghost = elc("span", "cbar-ghost");
+      ghost.title = "disposition (from their traits)";
+      track.appendChild(ghost);
+      const fill = elc("span", "cbar-fill");
+      track.appendChild(fill);
+      root.appendChild(track);
+      host.appendChild(root);
+      App.behavBars[r.key] = { root, fill, ghost, val };
+    });
+    updateBehavior(snap, false);
+  }
+
+  function updateBehavior(snap, flash) {
+    const b = snap.behavior || {};
+    (b.sensitivities || []).forEach((r) => {
+      const bar = App.behavBars[r.key];
+      if (!bar) return;
+      const f = centerFill(r.value);
+      bar.fill.style.left = f.left + "%"; bar.fill.style.width = f.width + "%";
+      bar.ghost.style.left = pct(r.base) + "%";
+      bar.val.textContent = fmt(r.value);
+      if (flash && Math.abs(r.delta || 0) > 0.005) {
+        const cls = r.key === "inhibition"
+          ? (r.delta > 0 ? "is-flash" : "is-sat")     // inhibition growing = magenta
+          : (r.delta > 0 ? "is-sat" : "is-flash");    // approach growing = green
+        bar.root.classList.remove("is-sat", "is-flash");
+        void bar.root.offsetWidth;
+        bar.root.classList.add(cls);
+      }
+    });
+    const meta = $("behavior-meta");
+    if (meta) {
+      const bits = [];
+      if (b.line) bits.push(b.line);
+      if (b.reception != null && Math.abs(b.reception) > 0.05) {
+        bits.push((b.reception > 0 ? "their reach was met (+" : "rebuffed (−")
+                  + Math.abs(b.reception).toFixed(2) + ")");
+      }
+      meta.textContent = bits.join(" · ");
+    }
+  }
+
   function renderLens(snap) {
     const el = $("lens-line");
     if (!el) return;
@@ -699,7 +764,9 @@
     { id: "threat",    field: "threat_challenge", signed: true,  lens: true, negate: true  },
     { id: "novelty",   field: "novelty",          signed: false, lens: true               },
     { id: "relevance", field: "self_relevance",   signed: false, lens: true               },
-    { id: "intensity", field: "intensity",        signed: false, lens: false              },
+    // intensity's raw-vs-interpreted gap is exactly the behavior intake gate: nothing else
+    // touches this dim, so the ghost is attributable to the carried stance alone
+    { id: "intensity", field: "intensity",        signed: false, lens: true               },
   ];
 
   function setMoodFill(el, value, signed) {
@@ -829,6 +896,7 @@
       updateDrives(snap, true);             // SDT needs: tension + satisfy/frustrate flash
       updateSelf(snap, true);               // self-image vs actual + esteem, with affirm/contradict flash
       updateVoice(snap, true);              // the outward voice: style dims + the via chip
+      updateBehavior(snap, true);           // the enacted stance + reception flash
       renderRecall(snap);                   // the memories this message surfaced
       renderLens(snap);                     // how they're reading the world now
       renderMood(snap);

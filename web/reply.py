@@ -2,9 +2,11 @@
 
 The MindForm engine forms personality from experiences; it does not itself hold a
 conversation. To make the console feel like *talking to someone*, this module
-generates a short first-person reply. It has no effect on personality formation --
+generates a short first-person reply. The reply's TEXT never re-enters formation --
 the push that moves the traits comes solely from ``llm_impact.push_from_text`` on
-the user's message, computed in the bridge before this is ever called.
+the user's message, computed in the bridge before this is ever called. (What does
+feed forward is engine state: the BEHAVIOR stance this reply enacts, recorded
+before it is generated and resolved against the next user message as its outcome.)
 
 The voice is the SOCIAL EXPRESSION node made audible (``nodes/expression.py``):
   * the character speaks from its SELF-VIEW (``self.image``), not its raw traits --

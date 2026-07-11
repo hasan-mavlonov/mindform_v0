@@ -18,6 +18,7 @@ from core.config import BASIS, BASIS_NAMES, DEFAULT_TAU, VALUES, MORAL, DRIVES
 from nodes.character import default_character
 from nodes.drives import rest_drives
 from nodes.self_concept import default_self, seed_base
+from nodes.behavior import default_behavior
 
 PERSONALITY_FILE = "data/personality.json"
 CHARACTERS_DIR = "data/characters"
@@ -43,6 +44,7 @@ def default_personality():
         "experience_count": 0,
     }
     personality["self"] = default_self(personality)   # self-image mirrors the birth traits
+    personality["behavior"] = default_behavior(personality)   # stance at its trait set-points
     return personality
 
 
@@ -104,6 +106,14 @@ def _ensure_self(personality):
     return personality
 
 
+def _ensure_behavior(personality):
+    """Backfill the behavior state onto a pre-behavior save (sensitivities at their
+    trait-anchored set-points, readiness steady, no act yet)."""
+    if not isinstance(personality.get("behavior"), dict):
+        personality["behavior"] = default_behavior(personality)
+    return personality
+
+
 def migrate(data):
     """Upgrade legacy formats and backfill temperament. Pure -- the caller persists."""
     if "traits" in data:                     # current shape (maybe pre-temperament)
@@ -120,7 +130,8 @@ def migrate(data):
             key = name_to_key.get(name)
             if key is not None:
                 personality["traits"][key] = value
-    return _ensure_self(_ensure_drives(_ensure_character(_ensure_temperament(personality))))
+    return _ensure_behavior(
+        _ensure_self(_ensure_drives(_ensure_character(_ensure_temperament(personality)))))
 
 
 def _read(path):

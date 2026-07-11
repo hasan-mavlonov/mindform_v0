@@ -136,7 +136,30 @@ def voice(personality, appraisal=None):
         verb = "prize" if dom["value"] > 0 else "have come to reject"
         lines.append(f"You {verb} {dom['name']} -- it colors what you notice and bring up.")
 
+    # the enacted stance (Behavior): the inclination the reply should carry
+    inclination = _INCLINATION_BRIEF.get(_stance_mode(personality))
+    if inclination:
+        lines.append(inclination)
+
     return lines[:6]
+
+
+# --- the enacted stance (Behavior node): the act the reply performs ----------------
+def _stance_mode(personality):
+    behavior = (personality or {}).get("behavior") or {}
+    return (behavior.get("set") or {}).get("mode", "steady")
+
+
+_INCLINATION_BRIEF = {
+    "approach": "You're leaning in -- say what you want to do next.",
+    "withdraw": "You're pulling back -- keep it guarded; don't promise reach you don't feel.",
+    "conflicted": "Part of you wants to dive in and part wants to disappear -- let both show.",
+}
+_INCLINATION_TAIL = {
+    "approach": "I want to go back at it.",
+    "withdraw": "For now I'd rather keep my distance.",
+    "conflicted": "Part of me wants to dive in; part of me wants to disappear.",
+}
 
 
 # --- the offline mouth: a deterministic compositor whose SHAPE is the style ------
@@ -245,6 +268,11 @@ def plain_reply(personality, user_text, appraisal=None):
         text = "Honestly, " + _decap(text)
     if s["energy"] <= -t:                                # quiet and spare: the budget clips last
         text = _clip_to_first_sentence(text)
+    # the enacted stance is the act itself -- always voiced, even by a quiet character
+    # (appended after the clip on purpose)
+    tail = _INCLINATION_TAIL.get(_stance_mode(personality))
+    if tail:
+        text += " " + tail
     return text
 
 

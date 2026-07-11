@@ -39,7 +39,12 @@ from nodes.drives import (
 from nodes.self_concept import (
     refresh as refresh_self, apply_event as apply_self_event, read_self, self_signal,
 )
-from nodes.expression import read_expression
+from nodes.expression import read_expression, style as expression_style
+from nodes.behavior import (
+    refresh as refresh_behavior, apply_event as apply_behavior_event,
+    note_act, intake as behavior_intake, read_behavior,
+)
+from core.impact import clamp
 from core.personality import (
     save_character, load_character, list_characters,
     read_traits, read_temperament,
@@ -248,7 +253,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
              moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None,
-             reply_source=None):
+             reply_source=None, behavior_before=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -275,6 +280,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         "drive": dominant_drive(personality),
         "self": _self_row(personality, self_before, self_sig),
         "expression": {**read_expression(personality, appraisal), "source": reply_source},
+        "behavior": read_behavior(personality, behavior_before),
         "reply": reply,
     }
 
@@ -400,8 +406,9 @@ def run_turn(name, message):
 
     This is exactly ``interactive.py``'s per-line pipeline:
         appraise -> push_from_text -> update_personality -> (memory) -> save.
-    The conversational ``reply`` is presentation layered on top; it never feeds
-    back into the personality math.
+    The conversational ``reply``'s TEXT never re-enters the personality math; what
+    does feed forward (BEHAVIOR) is the deterministic stance recorded before the
+    reply, resolved against the NEXT user message as its outcome.
     """
     text = (message or "").strip()
     personality = load_character(name)
@@ -422,13 +429,30 @@ def run_turn(name, message):
     personality = refresh_self(personality)
     self_before = dict(personality.get("self") or {})          # esteem/image before the event
 
+    # BEHAVIOR: relax the sensitivities toward their trait set-points; the CARRIED stance
+    # (last turn's act) is what gates this experience's intake inside interpret.
+    personality = refresh_behavior(personality)
+    behavior_before = dict(personality.get("behavior") or {})
+    engagement = behavior_intake(personality)                  # the intake factor, for the mirror
+
     raw_appraisal = appraise(text)                                         # the base reading
     appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
     self_sig = self_signal(personality.get("self"), appraisal)  # did it affirm / contradict the self-view
     view = lens(personality, recalled=recalled)
     push, source, reasoning = push_from_text(text, appraisal, lens=view)
     values_push, values_source, values_reasoning = values_push_from_text(text, appraisal, lens=view)
-    moral_push, _, _ = moral_push_from_text(text, appraisal, lens=view)
+    moral_push, moral_source, _ = moral_push_from_text(text, appraisal, lens=view)
+
+    # BEHAVIOR (the intake gate, LLM mirror): the heuristic pushes already inherit the gate
+    # through salience (they read the gated intensity); the LLM pushes read raw text, so the
+    # same factor is applied explicitly -- both paths land quantitatively identically gated.
+    if engagement != 1.0:
+        if source != "heuristic":
+            push = {k: clamp(v * engagement) for k, v in push.items()}
+        if values_source != "heuristic":
+            values_push = {k: clamp(v * engagement) for k, v in values_push.items()}
+        if moral_source != "heuristic":
+            moral_push = {k: clamp(v * engagement) for k, v in moral_push.items()}
 
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
@@ -456,6 +480,14 @@ def run_turn(name, message):
     # self-image drifts toward the just-formed traits (self-perception, resisting disconfirmation).
     personality = apply_self_event(personality, appraisal, personality["traits"])
 
+    # BEHAVIOR: the world's answer trains the sensitivities (rewarded own action teaches
+    # approach; threat trains inhibition; a carried lean-in is credited with how this
+    # message received it), and the new action readiness is read and carried forward.
+    personality = apply_behavior_event(personality, appraisal)
+    # Freeze the act this reply performs -- stance + mode + the style it is spoken with --
+    # as the record next turn's outcome is credited against (Expression Slice 2's contract).
+    personality = note_act(personality, style=expression_style(personality))
+
     save_character(personality)
 
     formation = _formation(before_traits, personality)
@@ -470,5 +502,5 @@ def run_turn(name, message):
         values_push=values_push, values_source=values_source,
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
         drive_before=drive_before, self_before=self_before, self_sig=self_sig,
-        reply_source=reply_source,
+        reply_source=reply_source, behavior_before=behavior_before,
     )

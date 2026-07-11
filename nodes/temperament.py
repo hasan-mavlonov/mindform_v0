@@ -25,6 +25,7 @@ from core.llm import complete_json
 from nodes.character import default_character
 from nodes.drives import rest_drives
 from nodes.self_concept import default_self
+from nodes.behavior import default_behavior
 
 log = logging.getLogger("mindform.genesis")
 
@@ -162,6 +163,7 @@ def _finalize(seed, overrides=None):
         "experience_count": 0,
     }
     personality["self"] = default_self(personality)   # self-image mirrors the birth traits (x = mu)
+    personality["behavior"] = default_behavior(personality)   # stance at its trait set-points
     return personality
 
 
