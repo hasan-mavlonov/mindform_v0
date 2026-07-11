@@ -194,6 +194,40 @@ DRIVE_ACTIVE_THRESH = 0.55  # a need must be at least this loud to surface in th
 DRIVE_RECALL_GAIN = 0.60    # how strongly need pressure re-ranks recall (0 = off)
 RECALL_CANDIDATES = 8       # candidate pool recall fetches before the need re-ranks and cuts
 
+# --- BEHAVIOR & LIFE OUTCOME: the enacted stance (the sink, and the loop-closer) ---
+# The last node of the diagram. Two INDEPENDENT formed sensitivities (Gray's two systems):
+# approach (BAS -- gain on reward cues, anchored to extraversion/openness) and inhibition
+# (BIS -- gain on threat cues, anchored to neuroticism). Independence is the point: both
+# loud = CONFLICTED (the anxious striver), both quiet = apathy -- states a single
+# approach<->avoid axis cannot express. From the sensitivities and each event's cues, a
+# carried ACTION READINESS (Frijda) -- {tendency, mode} -- is blended with inertia, voiced
+# in the reply as an inclination, and CLOSES THE RING two ways:
+#   * the intake gate: the carried tendency scales the next experience's INTENSITY
+#     (+/- BEHAV_EXPOSURE) before every other lens -- a withdrawn character lets life land
+#     softer, so everything forms less (the shy spiral, structurally damped: withdrawing
+#     attenuates the very signal that trains inhibition);
+#   * operant credit: the world's answer trains the sensitivities -- rewarded OWN action
+#     teaches approach hardest (a contingency gate on agency), threat trains inhibition
+#     faster than mastered challenge extinguishes it (bad-is-stronger, mirroring
+#     DRIVE_FRUST_GAIN), and a carried lean-in earns credit from how the next message
+#     answers it (reception -- the signal Expression Slice 2 was deferred for).
+# The needs and esteem are deliberately NOT gated: withdrawal cannot stop loneliness from
+# starving relatedness -- the ungated ache is the exit ramp from the avoidance spiral.
+BEHAV = ["approach", "inhibition"]
+BEHAV_NAMES = {"approach": "approach", "inhibition": "inhibition"}
+BEHAV_MU = {                # trait-anchored set-points (rows = BEHAV, cols = BASIS)
+    "approach":   {"E": 0.55, "O": 0.20},
+    "inhibition": {"N": 0.60, "E": -0.15},
+}
+BEHAV_TAU = 0.15            # per turn, a sensitivity relaxes toward its trait set-point
+BEHAV_GAIN = 0.25           # operant learning rate (through diminishing returns)
+BEHAV_CREDIT = 0.5          # reception credit share -- only a carried lean-IN earns it
+BEHAV_INH_UP = 1.0          # threat trains inhibition ...
+BEHAV_INH_DOWN = 0.5        # ... twice as fast as safe mastered challenge extinguishes it
+BEHAV_SET_BLEND = 0.6       # action-readiness inertia (fraction of the new reading adopted)
+BEHAV_EXPOSURE = 0.20       # intake gate: intensity x (1 + EXPOSURE * carried tendency)
+BEHAV_ACTIVE_THRESH = 0.30  # activation needed to call a mode (and voice the inclination)
+
 # --- SELF-CONCEPT & IDENTITY: the reflective model of the self ---
 # A fourth layer: the character's model OF ITSELF, which can diverge from what it actually is.
 # self["image"] = a self-schema on the OCEAN basis (who they think they are), formed by

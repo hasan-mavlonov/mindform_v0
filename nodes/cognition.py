@@ -26,6 +26,7 @@ the perceive -> form -> perceive loop stable, so the schema reinforces without r
 from core.config import (
     COGNITION_GAIN, MEMORY_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT, DRIVE_ACTIVE_THRESH,
     BASIS, M, SELF_GAIN, SELF_ESTEEM_GAIN, SELF_ACTIVE_THRESH, SELF_INCONGRUENCE_THRESH,
+    BEHAV_EXPOSURE,
 )
 from core.impact import rule_pull
 
@@ -160,15 +161,33 @@ def _self_tilt(out, personality):
     return out
 
 
+# --- the behavior gate (Behavior): the stance they carry bends how hard life lands ---
+def _behavior_tilt(out, personality):
+    """The intake gate -- the door before the tint. The action stance carried from last
+    turn multiplies this experience's INTENSITY: leaning in exposes the character to life
+    (events land harder and form more, via salience); holding back muffles it (the shy
+    spiral). Intensity is behavior's private channel -- no other tilt touches it -- so the
+    gate stays exactly attributable. Memoryless and bounded in [1-EXPOSURE, 1+EXPOSURE].
+    """
+    behavior = (personality or {}).get("behavior") or {}
+    tendency = float((behavior.get("set") or {}).get("tendency", 0.0))
+    if tendency == 0.0:
+        return out
+    factor = 1.0 + BEHAV_EXPOSURE * _clamp(tendency, -1.0, 1.0)
+    out["intensity"] = _clamp(out.get("intensity", 0.0) * factor, 0.0, 1.0)
+    return out
+
+
 def interpret(appraisal, personality, recalled=None):
-    """Return a copy of ``appraisal`` bent by who the character is, what they remember, what they
-    currently want, and who they think they are.
+    """Return a copy of ``appraisal`` bent by how engaged they are with the world, who they
+    are, what they remember, what they currently want, and who they think they are.
 
     ``recalled`` is the list of similar past episodes (from ``memory.recall``) for this
-    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The drive and
-    self tilts read ``personality["drives"]`` / ``["self"]`` and are no-ops when those are blank.
+    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The behavior,
+    drive, and self tilts read their ``personality`` keys and are no-ops when those are blank.
     """
-    out = _trait_tilt(dict(appraisal), personality)
+    out = _behavior_tilt(dict(appraisal), personality)   # the door: how much gets in
+    out = _trait_tilt(out, personality)
     out = _memory_tilt(out, recalled)
     out = _drive_tilt(out, personality)
     return _self_tilt(out, personality)
@@ -320,11 +339,28 @@ def _self_brief(personality):
     return ("How they see themselves: " + "; ".join(parts) + ".") if parts else ""
 
 
+_BEHAVIOR_BRIEF = {
+    "approach": ("Lately they lean into things; judge how hard this lands for someone "
+                 "reaching toward the world."),
+    "withdraw": ("Lately they have been holding back; judge how hard this lands for someone "
+                 "keeping the world at arm's length."),
+    "conflicted": "They are pulled two ways right now -- drawn in and braced at once.",
+}
+
+
+def _behavior_brief(personality):
+    """The carried stance as a sentence for the LLM push prompt (empty when steady)."""
+    behavior = (personality or {}).get("behavior") or {}
+    mode = (behavior.get("set") or {}).get("mode", "steady")
+    return _BEHAVIOR_BRIEF.get(mode, "")
+
+
 def lens(personality, recalled=None):
     """A short interpretive brief for the LLM push prompt -- how this person tends to read events,
-    from their strong traits, from how similar past experiences felt, from what they currently
-    want, and from who they think they are. Empty when nothing tilts the reading."""
-    parts = [_trait_brief(_lens_bits(personality)),
+    from their carried stance, their strong traits, how similar past experiences felt, what they
+    currently want, and who they think they are. Empty when nothing tilts the reading."""
+    parts = [_behavior_brief(personality),
+             _trait_brief(_lens_bits(personality)),
              _memory_brief(recalled),
              _drive_brief(personality),
              _self_brief(personality)]
