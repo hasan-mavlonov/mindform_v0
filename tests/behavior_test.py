@@ -98,6 +98,12 @@ check("the gate factor equals the interpreted/raw intensity ratio (exact attribu
       abs(interpret(a_raw, hold)["intensity"] / 0.6 - behavior.intake(hold)) < 1e-9)
 check("the gate is bounded", 1 - BEHAV_EXPOSURE <= behavior.intake(hold) <= 1 + BEHAV_EXPOSURE
       and 0.0 <= interpret(appr(inten=1.0), lean)["intensity"] <= 1.0)
+# at the intensity ceiling the clamp shrinks the REALIZED gate below the requested one --
+# the LLM mirror and the display must follow the realized ratio, not the request
+sat = interpret(appr(inten=0.95), lean)
+realized = sat["intensity"] / 0.95
+check("at saturation the realized gate is smaller than the requested factor",
+      sat["intensity"] == 1.0 and realized < behavior.intake(lean))
 
 
 # --- operant credit: the law of effect, done right ----------------------------------

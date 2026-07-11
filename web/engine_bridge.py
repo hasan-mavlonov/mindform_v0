@@ -219,6 +219,17 @@ def _formation(before, after):
     }
 
 
+def _behavior_block(personality, before, appraisal, appraisal_raw):
+    """The behavior snapshot, with the intake reported as the REALIZED factor -- what this
+    experience's intensity was actually multiplied by (the clamp at the [0,1] ceiling can
+    shrink the requested gate, and the display must say what landed, not what was asked)."""
+    block = read_behavior(personality, before)
+    raw_intensity = (appraisal_raw or {}).get("intensity", 0.0)
+    if appraisal and raw_intensity > 0:
+        block["intake"] = appraisal.get("intensity", 0.0) / raw_intensity
+    return block
+
+
 def _recalled_rows(recalled):
     """The past memories this turn surfaced, for the UI: text, the honest cosine score, and --
     when an active need pulled the memory up -- which need (motivated retrieval, named)."""
@@ -280,7 +291,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         "drive": dominant_drive(personality),
         "self": _self_row(personality, self_before, self_sig),
         "expression": {**read_expression(personality, appraisal), "source": reply_source},
-        "behavior": read_behavior(personality, behavior_before),
+        "behavior": _behavior_block(personality, behavior_before, appraisal, appraisal_raw),
         "reply": reply,
     }
 
@@ -446,13 +457,19 @@ def run_turn(name, message):
     # BEHAVIOR (the intake gate, LLM mirror): the heuristic pushes already inherit the gate
     # through salience (they read the gated intensity); the LLM pushes read raw text, so the
     # same factor is applied explicitly -- both paths land quantitatively identically gated.
-    if engagement != 1.0:
+    # Mirror the REALIZED ratio (interpreted/raw intensity -- exact, intensity is behavior's
+    # private channel), not the requested factor: at the intensity ceiling the clamp shrinks
+    # what the heuristic path actually received, and the LLM path must shrink with it.
+    raw_intensity = raw_appraisal.get("intensity", 0.0)
+    realized = (appraisal.get("intensity", 0.0) / raw_intensity) if raw_intensity > 0 \
+        else engagement
+    if realized != 1.0:
         if source != "heuristic":
-            push = {k: clamp(v * engagement) for k, v in push.items()}
+            push = {k: clamp(v * realized) for k, v in push.items()}
         if values_source != "heuristic":
-            values_push = {k: clamp(v * engagement) for k, v in values_push.items()}
+            values_push = {k: clamp(v * realized) for k, v in values_push.items()}
         if moral_source != "heuristic":
-            moral_push = {k: clamp(v * engagement) for k, v in moral_push.items()}
+            moral_push = {k: clamp(v * realized) for k, v in moral_push.items()}
 
     before_traits = dict(personality["traits"])
     personality = update_personality(personality, push)
