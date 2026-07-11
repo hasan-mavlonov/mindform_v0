@@ -26,9 +26,10 @@ the perceive -> form -> perceive loop stable, so the schema reinforces without r
 from core.config import (
     COGNITION_GAIN, MEMORY_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT, DRIVE_ACTIVE_THRESH,
     BASIS, M, SELF_GAIN, SELF_ESTEEM_GAIN, SELF_ACTIVE_THRESH, SELF_INCONGRUENCE_THRESH,
-    BEHAV_EXPOSURE,
+    SELF_OUGHT_GAIN, SELF_GAP_THRESH, BEHAV_EXPOSURE,
 )
 from core.impact import rule_pull
+from nodes.self_concept import ought_gap, aspiration_gap
 
 _THRESH = 0.25       # how far from neutral a trait must be to colour the lens
 _TONE_THRESH = 0.20  # how clearly the remembered tone must lean to surface a brief / tag
@@ -140,12 +141,20 @@ def _self_tilt(out, personality):
     reads as more threat and more self-relevant (dissonance), an affirming one warms. (2) ESTEEM
     BUFFER -- high self-regard reads events as surmountable challenges, low regard as threats.
     """
+    # agitation (Higgins): falling short of who they OUGHT to be keeps them vigilant -- the
+    # reading tilts toward threat in proportion to the ought-gap. Before the no-self guard
+    # on purpose: a blank self-image against a formed ought is the maximal falling-short.
+    og = ought_gap(personality)
+    if og > 0.0:
+        out["threat_challenge"] = _clamp(
+            out.get("threat_challenge", 0.0) - SELF_OUGHT_GAIN * og, -1.0, 1.0)
+
     self_state = (personality or {}).get("self") or {}
     image = self_state.get("image") or {}
     esteem = float(self_state.get("esteem", 0.0))
     img = {k: float(image.get(k, 0.0)) for k in BASIS}
     if sum(abs(v) for v in img.values()) + abs(esteem) <= 0.0:
-        return out                                    # no self yet -> no self lens
+        return out                                    # no self-view yet -> no image/esteem lens
     # self-consistency
     implied = rule_pull(out, BASIS, M)                # the trait direction this event implies
     align = _clamp(sum(img[k] * implied[k] for k in BASIS), -1.0, 1.0)      # + affirms / - contradicts
@@ -320,6 +329,10 @@ def _self_bits(personality):
         bits.append("shaky sense of self")
     if _self_incongruent(personality):
         bits.append("self-image lagging who they've become")
+    if aspiration_gap(personality) > SELF_GAP_THRESH:
+        bits.append("falling short of who they want to be")
+    if ought_gap(personality) > SELF_GAP_THRESH:
+        bits.append("weighed by who they ought to be")
     return bits
 
 
@@ -336,6 +349,10 @@ def _self_brief(personality):
         parts.append("they doubt their own worth and take setbacks personally")
     if _self_incongruent(personality):
         parts.append("their self-image lags who they have become, and they resist revising it")
+    if aspiration_gap(personality) > SELF_GAP_THRESH:
+        parts.append("they feel they are falling short of who they want to be")
+    if ought_gap(personality) > SELF_GAP_THRESH:
+        parts.append("they carry the weight of who they think they ought to be")
     return ("How they see themselves: " + "; ".join(parts) + ".") if parts else ""
 
 

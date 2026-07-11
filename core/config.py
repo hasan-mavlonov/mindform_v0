@@ -246,6 +246,30 @@ SELF_GAIN = 0.15             # self-consistency tilt: contradiction reads as thr
 SELF_ESTEEM_GAIN = 0.10      # esteem buffer: high regard reads events as challenges, low as threats
 SELF_ACTIVE_THRESH = 0.25    # how strong esteem must be to surface a self tag in the lens
 SELF_INCONGRUENCE_THRESH = 0.25   # mean self-image-vs-actual gap that surfaces the "self-image lags" tag
+# Slice 2 -- the IDEAL and OUGHT selves (Higgins' self-discrepancy theory). Two aspired
+# selves are DERIVED each turn, never stored: the ideal self is who your formed VALUES say
+# you want to be (rows = BASIS, cols = VALUES), the ought self who your MORAL foundations
+# say you should be. Falling short of the ideal (image vs ideal, weighted by how strongly
+# the ideal is held) chronically depresses the esteem baseline -- DEJECTION; falling short
+# of the ought adds vigilance to the reading -- AGITATION. You can only fall short of an
+# ideal you actually hold: a blank character has no aspiration and no gap.
+SELF_IDEAL_M = {
+    "O": {"SD": 0.5, "ST": 0.3, "UN": 0.3},        # aspire to curiosity, breadth
+    "C": {"AC": 0.6, "SE": 0.2, "CO": 0.2, "TR": 0.2},   # aspire to discipline, order
+    "E": {"ST": 0.3, "PO": 0.4, "HE": 0.2, "AC": 0.1},   # aspire to boldness, presence
+    "A": {"BE": 0.6, "UN": 0.4, "CO": 0.3, "PO": -0.2},  # aspire to warmth (power corrodes it)
+    "N": {"SE": -0.5},                              # security prized -> aspire to calm
+}
+SELF_OUGHT_M = {
+    "O": {"LIB": 0.3},                              # ought to stay free-minded
+    "C": {"AUTH": 0.4, "FAIR": 0.3, "SANC": 0.3},   # ought to be dutiful, principled
+    "E": {},
+    "A": {"CARE": 0.5, "FAIR": 0.2, "LOYAL": 0.2},  # ought to be kind, fair, loyal
+    "N": {"SANC": -0.2},                            # ought to be composed
+}
+SELF_GAP_SLOPE = 0.5         # how hard falling short of the ideal depresses the esteem baseline
+SELF_OUGHT_GAIN = 0.10       # agitation: the ought-gap's threat tilt on the reading (small)
+SELF_GAP_THRESH = 0.25       # gap size that surfaces the falling-short tags in the lens
 
 # --- SOCIAL EXPRESSION: the outward voice (a derived faculty, no stored state) ---
 # The output-side twin of the cognitive lens: where cognition bends how the world gets IN,

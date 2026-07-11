@@ -219,6 +219,9 @@ p { margin: 0; }
 .cbar-zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--hairline-2); }
 .cbar-ghost { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted);
   opacity: .5; border-radius: 2px; transform: translateX(-1px); }
+/* the aspired self (Higgins): an amber tick at who they WANT to be */
+.cbar-ideal { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--warm);
+  opacity: .8; border-radius: 2px; transform: translateX(-1px); }
 .cbar-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px;
   transition: left .65s cubic-bezier(.4,0,.2,1), width .65s cubic-bezier(.4,0,.2,1); }
 .cbar--belief .cbar-fill { background: var(--belief); box-shadow: 0 0 10px -2px var(--belief); }
