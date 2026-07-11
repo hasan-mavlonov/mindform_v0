@@ -26,6 +26,7 @@ from nodes.character import default_character
 from nodes.drives import rest_drives
 from nodes.self_concept import default_self
 from nodes.behavior import default_behavior
+from nodes.expression import default_expression
 
 log = logging.getLogger("mindform.genesis")
 
@@ -164,6 +165,7 @@ def _finalize(seed, overrides=None):
     }
     personality["self"] = default_self(personality)   # self-image mirrors the birth traits (x = mu)
     personality["behavior"] = default_behavior(personality)   # stance at its trait set-points
+    personality["expression"] = default_expression(personality)  # manner starts at its target
     return personality
 
 

@@ -609,8 +609,8 @@
     });
   }
 
-  // ---- Expression: the outward voice -- four style dims derived from the self-view,
-  // regard, and need pressure (no ghost: there is no baseline, only the current manner).
+  // ---- Expression: the outward voice -- the FORMED manner (fill) vs what the inner state
+  // calls for (ghost tick). The gap is a learned mannerism, shaped by how replies land.
   function buildVoice(snap) {
     const host = $("voice-bars");
     if (!host) return;
@@ -625,11 +625,14 @@
       root.appendChild(top);
       const track = elc("div", "cbar-track");
       track.appendChild(elc("span", "cbar-zero"));
+      const ghost = elc("span", "cbar-ghost");
+      ghost.title = "what their inner state calls for";
+      track.appendChild(ghost);
       const fill = elc("span", "cbar-fill");
       track.appendChild(fill);
       root.appendChild(track);
       host.appendChild(root);
-      App.voiceBars[r.key] = { root, fill, val, last: null };
+      App.voiceBars[r.key] = { root, fill, ghost, val };
     });
     updateVoice(snap, false);
   }
@@ -641,13 +644,14 @@
       if (!b) return;
       const f = centerFill(r.value);
       b.fill.style.left = f.left + "%"; b.fill.style.width = f.width + "%";
+      if (b.ghost && r.target != null) b.ghost.style.left = pct(r.target) + "%";
       b.val.textContent = fmt(r.value);
-      if (flash && b.last != null && Math.abs(r.value - b.last) > 0.02) {
-        b.root.classList.remove("is-flash");
+      if (flash && Math.abs(r.delta || 0) > 0.005) {
+        const cls = r.delta > 0 ? "is-sat" : "is-flash";   // manner grew / faded this turn
+        b.root.classList.remove("is-sat", "is-flash");
         void b.root.offsetWidth;
-        b.root.classList.add("is-flash");
+        b.root.classList.add(cls);
       }
-      b.last = r.value;
     });
     const meta = $("voice-meta");
     if (meta) {

@@ -262,6 +262,14 @@ STYLE_SOURCES = {
 }
 STYLE_THRESH = 0.25          # how far from neutral a style dim must be to shape the voice
 VOICE_MOOD_THRESH = 0.30     # how strongly this turn's (interpreted) mood must lean to be voiced
+# Slice 2 -- style as a FORMED layer. The Slice-1 derivation becomes the SET-POINT (what the
+# inner state calls for) and a persisted style forms around it: it relaxes toward the target
+# (manner lags inner change -- the newly-confident character still sounds tentative for a
+# while) and is operantly SHAPED by reception -- the manner actually spoken with is
+# entrenched when the next message answers it warmly and extinguished when it is rebuffed
+# ("speaks warmly because warmth kept working"; "the humor stopped landing, so it faded").
+STYLE_TRACK = 0.15           # per turn, the formed style relaxes toward its derived target
+STYLE_LEARN = 0.20           # how strongly one reception entrenches/extinguishes the spoken manner
 
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.

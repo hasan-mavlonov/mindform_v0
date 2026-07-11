@@ -39,7 +39,10 @@ from nodes.drives import (
 from nodes.self_concept import (
     refresh as refresh_self, apply_event as apply_self_event, read_self, self_signal,
 )
-from nodes.expression import read_expression, style as expression_style
+from nodes.expression import (
+    read_expression, style as expression_style,
+    refresh as refresh_expression, apply_event as apply_expression_event,
+)
 from nodes.behavior import (
     refresh as refresh_behavior, apply_event as apply_behavior_event,
     note_act, intake as behavior_intake, read_behavior,
@@ -264,7 +267,7 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
              reasoning="", seen=None, formation=None, reply=None,
              values_push=None, values_source=None, values_reasoning="",
              moral_push=None, recalled=None, drive_before=None, self_before=None, self_sig=None,
-             reply_source=None, behavior_before=None):
+             reply_source=None, behavior_before=None, expression_before=None):
     """The full state object the cockpit reads. Engine values pass straight through."""
     trait_rows = _trait_rows(personality)
     identity = dict(personality.get("identity") or {})
@@ -290,7 +293,8 @@ def snapshot(personality, *, push=None, appraisal=None, appraisal_raw=None, sour
         "drives": _drive_rows(personality, drive_before),
         "drive": dominant_drive(personality),
         "self": _self_row(personality, self_before, self_sig),
-        "expression": {**read_expression(personality, appraisal), "source": reply_source},
+        "expression": {**read_expression(personality, appraisal, expression_before),
+                       "source": reply_source},
         "behavior": _behavior_block(personality, behavior_before, appraisal, appraisal_raw),
         "reply": reply,
     }
@@ -446,6 +450,11 @@ def run_turn(name, message):
     behavior_before = dict(personality.get("behavior") or {})
     engagement = behavior_intake(personality)                  # the intake factor, for the mirror
 
+    # EXPRESSION: the formed manner relaxes toward what the inner state now calls for
+    # (manner lags inner change); the reply later speaks with this formed style.
+    personality = refresh_expression(personality)
+    expression_before = dict(personality.get("expression") or {})
+
     raw_appraisal = appraise(text)                                         # the base reading
     appraisal = interpret(raw_appraisal, personality, recalled=recalled)   # bent by the lens
     self_sig = self_signal(personality.get("self"), appraisal)  # did it affirm / contradict the self-view
@@ -501,8 +510,17 @@ def run_turn(name, message):
     # approach; threat trains inhibition; a carried lean-in is credited with how this
     # message received it), and the new action readiness is read and carried forward.
     personality = apply_behavior_event(personality, appraisal)
-    # Freeze the act this reply performs -- stance + mode + the style it is spoken with --
-    # as the record next turn's outcome is credited against (Expression Slice 2's contract).
+
+    # EXPRESSION (operant shaping): the manner actually SPOKEN WITH last turn (frozen in the
+    # act record) is entrenched or extinguished by how this message received it -- read
+    # BEFORE note_act overwrites the record with this turn's act.
+    last_act = (personality.get("behavior") or {}).get("last") or {}
+    personality = apply_expression_event(
+        personality, last_act.get("style"),
+        (personality.get("behavior") or {}).get("reception"))
+
+    # Freeze the act this reply performs -- stance + mode + the (newly shaped) style it is
+    # spoken with -- as the record next turn's outcome is credited against.
     personality = note_act(personality, style=expression_style(personality))
 
     save_character(personality)
@@ -520,4 +538,5 @@ def run_turn(name, message):
         values_reasoning=values_reasoning, moral_push=moral_push, recalled=recalled,
         drive_before=drive_before, self_before=self_before, self_sig=self_sig,
         reply_source=reply_source, behavior_before=behavior_before,
+        expression_before=expression_before,
     )
