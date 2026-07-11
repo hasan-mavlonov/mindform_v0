@@ -76,6 +76,7 @@
   function showStart() {
     $("cockpit").classList.add("hidden");
     $("start").classList.remove("hidden");
+    setTab("existing");    // returning users land on their roster, not the last creation form
     loadRoster();
   }
   function showCockpit() {
@@ -88,15 +89,19 @@
   // ===========================================================================
   // START SCREEN
   // ===========================================================================
+  function setTab(name) {
+    $("start-tabs").querySelectorAll(".tab")
+      .forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+    ["existing", "genesis", "manual"].forEach((p) =>
+      $("panel-" + p).classList.toggle("active", p === name));
+  }
+
   function initTabs() {
     const tabs = $("start-tabs");
     tabs.addEventListener("click", (e) => {
       const btn = e.target.closest(".tab");
       if (!btn) return;
-      const name = btn.dataset.tab;
-      tabs.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-      ["existing", "genesis", "manual"].forEach((p) =>
-        $("panel-" + p).classList.toggle("active", p === name));
+      setTab(btn.dataset.tab);
     });
   }
 

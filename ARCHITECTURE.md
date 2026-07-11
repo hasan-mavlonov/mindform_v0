@@ -1,191 +1,150 @@
 # MindForm Architecture
 
 ## What it does
-A character is **born** from a short biography (genesis): it gets immutable identity
-facts plus a temperamental OCEAN baseline. Then a piece of text (an experience)
-changes its personality -- five OCEAN traits, each in **[-1, 1]** -- by pushing the
-traits with **diminishing returns**: a trait moves fast while near 0 and ever more
-slowly as it approaches +/-1.
+A character is **born** from a short biography (genesis): immutable identity facts plus a
+temperamental OCEAN baseline. Every experience you tell it then **forms** the whole person:
+traits, values, moral outlook, beliefs, habits, needs, a self-image, a manner of speaking,
+and a behavioral stance -- each its own node, each visible live in the cockpit, each moving
+by bounded dynamics (pushes with **diminishing returns**, pulls back to set-points), so
+formation is fast near zero and asymptotes at the extremes without ever running away.
 
+The engine is **LLM-primary, offline-complete**: with a key set, an OpenAI-compatible model
+(Google's Gemma 4 via the Gemini API by default) reads each experience; with no key, no
+`openai` package, or no network, every node falls back to deterministic heuristics and the
+whole product still runs -- including the UI.
+
+## One turn, end to end (`web/engine_bridge.run_turn`)
 ```
-bio  -> genesis (temperament.py): identity + OCEAN baseline mu + stickiness tau,
-        born at baseline (traits x = mu)
+text -> REFRESH the carried state (each x <- x + rate*(set_point - x)):
+          drives      needs regenerate toward their value-seeded weights
+          self        esteem relaxes toward its (aspiration-depressed) baseline
+          behavior    sensitivities relax toward trait-anchored set-points
+          expression  the formed manner relaxes toward what the inner state calls for
 
-text -> MiniLM embedding (encoder.py)                  # recurrence + memory
-     -> signed push:
-          DeepSeek LLM  (llm_impact.py): text -> OCEAN delta x LLM_FORMATION_RATE  [primary]
-          heuristic     (appraisal.py -> impact.py): appraisal vector -> push      [fallback]
-     -> diminishing-returns update of the five traits (updater.py)
-     -> CHARACTER: the same experience pushes the ten Schwartz values AND the six
-          Moral Foundations (values.py / moral.py: LLM delta x LLM_FORMATION_RATE [primary];
-          impact + VALUES_M / MORAL_M [fallback]) -> same diminishing-returns update
-          (character.py); the LLM also extracts open beliefs (beliefs.py -> form_beliefs,
-          deduped, offline-deferred via memory); recurring experiences settle into habits
-          (memory.recurrence -> character.note_habit)
-     -> persist + memory   (personality.py, memory.py)
+     -> RECALL (memory.py; needs numpy + encoder, skipped cleanly without):
+          cosine top-k over the embedding sidecar, then MOTIVATED RETRIEVAL --
+          the active needs re-rank the pool (drives.recall_bias): what you lack
+          shapes what you remember
+
+     -> APPRAISE (perception): llm_appraisal.appraise_from_text
+          LLM 8-dim appraisal [primary] -> trained head -> lexicon   [fallback chain]
+          every LLM-labelled reading is logged as training data (appraisal_log) --
+          the offline head learns from the online model with use (distillation)
+
+     -> INTERPRET (cognition.interpret) -- the lens, five tilts in order:
+          behavior gate   the carried stance scales INTENSITY (lean in = life lands harder)
+          trait tilt      anxious -> more threat, darker valence; open -> more novelty
+          memory tilt     recalled episodes pull valence/threat toward how they felt
+          drive tilt      events bearing on loud needs read more relevant/warm/threatening
+          self tilt       self-discrepant events read as threat; esteem buffers; the
+                          ought-gap adds vigilance (agitation)
+
+     -> PUSH x3 (traits / values / moral): LLM delta x LLM_FORMATION_RATE [primary]
+          (the prompt carries cognition.lens() -- the same tilts as words), or
+          impact(appraisal) x M / VALUES_M / MORAL_M [fallback]; the LLM pushes are
+          mirrored by the realized intake ratio so both paths land identically gated
+
+     -> UPDATE: traits (diminishing returns + temperament pull/drift), values, moral,
+          habits (recurrence), beliefs (LLM extraction, offline-deferred)
+
+     -> STORE memory: the INTERPRETED appraisal + the stance it was met with
+
+     -> APPLY the events back onto the carried state:
+          drives      satisfaction/frustration (frustration bites harder)
+          self        sociometer esteem + Bem/Swann self-image drift
+          behavior    operant credit (rewarded OWN action; threat trains inhibition
+                      2x faster than mastery extinguishes) + reception of the last act
+          expression  the manner actually spoken with is entrenched/extinguished by
+                      how the reply landed (reception shaping)
+
+     -> NOTE the act (stance + mode + style frozen for next turn's credit) -> SAVE
+     -> REPLY (reply.py): speaks from the SELF-VIEW in the formed voice, sees the
+          interpreted appraisal; deterministic styled compositor offline
+     -> SNAPSHOT for the cockpit
 ```
+The reply's **text** never re-enters formation; what feeds forward is the deterministic
+stance recorded before the reply, resolved against the *next* user message as its outcome.
 
-## Representation
-- **Personality** (`personality.py`): `{"identity", "temperament": {"mu","tau"}, "traits": {O,C,E,A,N in [-1,1]}, "character": {"values","habits"}, "experience_count"}`.
-- **Temperament** (`temperament.py`): per-trait baseline `mu in [-1,1]` and stickiness
-  `tau in [0,1]`, seeded at genesis; `identity` holds immutable facts (name, origin,
-  religion-raised, ...). The current `traits` are born at the baseline (x = mu).
-- **Character** (`character.py`): what a person *becomes* from experience -- the ten
-  Schwartz **values** (`config.VALUES`) and the six Moral Foundations / **moral outlook**
-  (`config.MORAL`), each signed [-1,1], the open **beliefs** they come to hold
-  (`{statement, confidence}`), plus the **habits** they fall into. Unlike temperament,
-  these are **not** innate: they start empty / at 0 and form.
-- **Experience** (`config.APPRAISAL_SCHEMA`): an appraisal vector --
-  `valence, intensity, novelty, agency, social, outcome, self_relevance, threat_challenge`
-  -- the causal ingredients of change, not a trait-expression reading.
+## The layers (all in one `personality` dict, all persisted as JSON)
+| Layer | What it is | Dynamics | Anchor / set-point |
+|---|---|---|---|
+| `identity` | immutable facts | never moves | — |
+| `temperament` (mu, tau) | innate OCEAN baseline | mu drifts only under sustained change | — |
+| `traits` (OCEAN) | who they are now | push + diminishing returns | pulled toward `mu` by `tau` |
+| `character.values` (Schwartz 10) | what they prize | same push dynamics, from 0 | none -- earned |
+| `character.moral` (Haidt 6) | what's right/wrong to them | same | none -- earned |
+| `character.beliefs` | open propositions held | LLM-extracted, conviction accumulates | none |
+| `character.habits` | recurring experiences | recurrence count threshold | none |
+| `drives` (SDT 3) | need tensions: how starved | fast satisfy/frustrate (asymmetric) | weights seeded from values |
+| `self.image` (OCEAN) | who they THINK they are | Bem drift toward traits, Swann-damped | lags reality by design |
+| `self.esteem` | self-regard | sociometer (rides the needs) | dispositional base − aspiration gap |
+| `expression.style` | the formed manner | reception shaping (operant) | derived target from self-view |
+| `behavior` (approach/inhibition) | the enacted stance | operant credit from outcomes | trait-anchored set-points |
 
-## Temperament & genesis (the baseline you're born with)
-A character is born from a biography via `temperament.genesis(bio)`, which seeds:
-- `identity` -- immutable facts (name, origin, religion-raised, ...): the lens, never drifts.
-- `temperament.mu` -- the per-trait OCEAN **baseline** (the biological set-point).
-- `temperament.tau` -- per-trait **stickiness** in [0, 1]: how hard biology anchors the trait.
+Derived each turn, never stored: drive weights, esteem baselines, the ideal/ought selves
+(Higgins: values -> who they want to be, moral -> who they should be; falling short
+depresses regard and adds vigilance), the style target, behavior set-points, the intake
+gate. Read-outs cannot fall out of sync with their sources.
 
-The current `traits` start AT the baseline (`x = mu`), so two different bios yield two
-distinguishable characters from birth instead of identical blank slates. Genesis uses
-DeepSeek with the same heuristic fallback discipline as the push, so it runs with no network.
-
-Three authoring paths build a character:
-- `genesis(bio)` -- a one-line free-text biography; LLM/heuristic seeds `mu`/`tau`.
-- `create_character(fields)` -- explicit identity fields + a free-text `background` that seeds `mu`/`tau`.
-- `build_character(identity, mu)` -- explicit identity + an explicitly chosen OCEAN baseline,
-  no LLM. This backs the short **questionnaire** the interactive shell uses
-  (`config.TRAIT_QUESTIONS`: one 1-5 question per trait -> baseline `mu`).
-
-Characters live in a roster (`data/characters/<slug>.json`, keyed by name; per-character
-memories alongside as `<slug>.memories.json`). `interactive.py` opens with **Use existing**
-(lists the roster, pick one) or **Create new** (identity + trait questionnaire), then drops
-into the talk loop, autosaving the active character each turn.
-
-The temperament dynamics are **live** (Slice 2): every experience, after the push,
-`updater.py` pulls the current trait back toward its baseline and drifts the baseline
-slowly toward the lived state:
+## Perception -> formation (the numbers)
 ```
-x[k]  <- x[k] + tau[k] * (mu[k] - x[k])              # prior pulls current toward baseline
-mu[k] <- mu[k] + TEMPERAMENT_DRIFT * (x[k] - mu[k])  # baseline drifts slowly (eta << tau)
+appraisal = {valence, intensity, novelty, agency, social, outcome,
+             self_relevance, threat_challenge}          # threat_challenge: -1 threat, +1 challenge
+salience  = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
+push[k]   = clamp(FORMATION_RATE * salience * (M . appraisal)[k])
+trait[k] <- clamp(trait[k] + push[k]*(1-|trait[k]|))    # diminishing returns
+x[k]     <- x[k] + tau[k]*(mu[k]-x[k]);  mu[k] <- mu[k] + DRIFT*(x[k]-mu[k])
 ```
-`tau` is the fraction of the gap to baseline closed per experience (high = resilient,
-low = easily reshaped); `TEMPERAMENT_DRIFT` (~0.02) is far smaller, so only a *sustained*
-shift moves the baseline. With the pull active, repeated experience settles a trait at a
-fixed point *between* its baseline and the extreme -- so identical lives with different
-temperaments end up as different stable people. (Bayesian point-estimate now; per-trait
-distributions later.)
+A vivid party moves E `0.00 -> 0.30 -> 0.51 -> 0.66 ...`; helpless terror raises N while
+fear faced with mastery lowers it (`M`'s N row is signed). Values and moral share the same
+update through `VALUES_M` / `MORAL_M`. Every feedback loop added on top (perceive -> form ->
+perceive; behavior's intake gate; expression's reception shaping) is bounded by the same two
+forces -- clamped small gains and pull-to-set-point -- with stability arguments and tests per
+node.
 
-## Character (what you become from experience)
-Temperament is the baseline you're *born* with; **character** is what you grow into by
-living. Where the OCEAN traits describe *how* a person is, the Schwartz **values**
-describe *what they prize* -- and they form by the very same dynamics:
-
-```
-text -> Schwartz delta (values.py)        # LLM [primary] / impact + VALUES_M [fallback]
-push[v]    = clamp(LLM_FORMATION_RATE * delta[v])           # one occurrence's pressure
-value[v]  <- clamp(value[v] + push[v] * (1 - |value[v]|))   # same diminishing returns
-```
-The ten values (`SD, ST, HE, AC, PO, SE, CO, TR, BE, UN`) trade off against one another,
-so one experience can raise some and lower others (quitting a stable job to travel raises
-Stimulation/Self-Direction while lowering Security). `character.higher_order` rolls them up
-onto Schwartz's four poles (openness-to-change, self-enhancement, conservation,
-self-transcendence) for plain-language read-outs. Values start at **0** -- earned, not
-innate -- which is exactly what separates character (experience) from temperament (biology).
-
-Alongside the values, the same machinery forms the **moral outlook** -- Haidt's six Moral
-Foundations (`config.MORAL`: care, fairness, loyalty, authority, sanctity, liberty), each
-signed [-1,1] and formed by `moral.moral_push_from_text` (LLM primary, `impact + MORAL_M`
-fallback) through the very same diminishing-returns update. The values say *what you prize*;
-the foundations say *what you treat as right or wrong*.
-
-**Belief** is the open, propositional layer: from each experience the LLM (`beliefs.py`, no
-heuristic) extracts 0-2 general beliefs (`"hard work pays off"`) with a signed confidence
-delta; `character.update_beliefs` accumulates the conviction with the same diminishing
-returns, deduped by embedding similarity (or punctuation-insensitive text, offline). With no
-LLM, beliefs don't form live -- the experiences are saved to memory and turned into beliefs by
-a later reflection pass (`character.form_beliefs` walks the unreviewed memory backlog, tracked
-by the `beliefs_reviewed` watermark -- the Memory -> Character arrow). Values and foundations
-are fixed vectors; beliefs are an open list, like habits.
-
-**Habits** are the behavioral residue of repetition: when an experience recurs
-(`memory.recurrence`) past `config.HABIT_MIN_RECURRENCE`, `character.note_habit` records
-it. The trait push and the values push share one appraisal of the experience and one
-update rule (`updater.apply_diminishing`); they are kept as separate nodes so each can be
-swapped independently. (See `character_test.py`.)
-
-## Push + update
-```
-salience = intensity*(0.5+0.5*self_relevance)*(0.5+0.5*novelty)
-pull     = M . appraisal                          # which traits move, signed (config.M)
-push[k]  = clamp(FORMATION_RATE * salience * pull[k])
-
-trait[k] <- clamp(trait[k] + push[k] * (1 - |trait[k]|))   # diminishing returns
-```
-Worked example (a vivid party, push_E ~ 0.3):
-`E: 0.00 -> 0.30 -> 0.51 -> 0.66 -> ...` -- each repetition adds less, bounded by 1.
-
-Because the push is signed, experiences can lower a trait too: the `M` neuroticism
-row `(-valence, -agency, -outcome, -threat_challenge, +intensity)` makes helpless
-terror raise N while fear faced with mastery lowers it. (See `acceptance_test.py`.)
-
-`FORMATION_RATE` is the responsiveness knob: ~0.3 per vivid experience is fast;
-lower it for slower, more gradual formation.
-
-## LLM push (DeepSeek) + heuristic fallback
-The primary push comes from DeepSeek (`llm_impact.py`): the model reads the experience
-and returns a signed OCEAN delta in [-1, 1] -- the pressure of a **single** occurrence --
-and `push = clamp(LLM_FORMATION_RATE * delta)`. Repetition is not baked into the delta;
-the engine accumulates repeated experiences and the diminishing-returns update supplies
-the asymptote. DeepSeek is OpenAI-compatible (cheap, China-reachable), so any compatible
-endpoint works via `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`.
-
-Copy `.env.example` to `.env` and set `DEEPSEEK_API_KEY`. If the key is missing, the
-`openai` package is absent, the network fails, or the reply is unparseable,
-`push_from_text` falls back to the deterministic heuristic `impact(appraise(text))` --
-so there is no hard network dependency and the dependency-free `acceptance_test.py`
-path is unchanged.
+## Perception distillation (the offline appraiser learns with use)
+The dataset problem is solved by manufacture: the online model is the teacher.
+`appraise_from_text` (LLM) serves the live reading and logs `{"text", "appraisal"}` rows to
+`data/appraisal_dataset.jsonl`; `bootstrap/distill_appraisal_corpus.py` batch-writes and
+labels synthetic experiences (15 domains x 7 tones) into the same file;
+`bootstrap/train_appraisal_head.py` fits the MiniLM-embedding head; `core.appraisal`
+automatically prefers the trained head offline. **The iron rule:** only LLM-labelled rows
+enter the log -- the head never trains on its own (or the lexicon's) outputs.
 
 ## Deterministic vs learned -- every component is replaceable
 | Component | Today | Later (same interface) |
 |---|---|---|
-| Encoder | MiniLM (frozen) | — |
-| Push source | LLM (primary), heuristic fallback | learned `appraisal -> push` |
-| Values push | LLM Schwartz delta (primary), `impact + VALUES_M` fallback | learned `appraisal -> values` |
-| Values matrix `VALUES_M` | theory rules | learned `appraisal -> values` |
-| Appraisal extractor | heuristic -> head trained on affect corpora | larger/fine-tuned head |
-| Push matrix `M` | theory rules | learned `appraisal -> push` |
-| Temperament seed | DeepSeek genesis (heuristic fallback) | learned `bio -> (mu, tau)` |
-| Temperament math | point estimate (mu, tau) | per-trait distributions (mu, sigma) |
-
-## Data (no longitudinal dataset required)
-- Appraisal head: existing cross-sectional affect/appraisal corpora (EmoBank VAD,
-  GoEmotions, appraisal-annotated event sets) via `bootstrap/`.
-- No `experience -> trait-change` labels exist anywhere, so `M` stays rules until
-  such data does.
+| Appraisal | LLM [primary] -> trained head -> lexicon | head keeps improving via distillation |
+| Push matrices `M`/`VALUES_M`/`MORAL_M` | theory rules (fallback path) | learned from the same distillation log |
+| Drive/self/behavior/style priors | theory-authored (SDT, sociometer, BIS/BAS, circumplex) | learned |
+| Temperament seed | LLM genesis (lexicon fallback) | learned `bio -> (mu, tau)` |
+| Temperament math | point estimates | per-trait distributions |
 
 ## Run
 ```
-python tests/acceptance_test.py                           # dependency-free: experience -> trait change
-python tests/genesis_test.py                              # dependency-free: bio -> distinct temperament
-python tests/character_test.py                            # dependency-free: experience -> values + habits
-pip install -r requirements.txt                           # encoder + DeepSeek client
-cp .env.example .env                                      # set DEEPSEEK_API_KEY (optional; heuristic runs without it)
-python genesis.py "Aisha, an anxious, creative, sheltered poet."   # birth a character (CLI)
-python interactive.py                                     # roster menu (use existing / create new) + talk
-python simulation.py                                      # full pipeline (encoder in the loop)
-python bootstrap/build_affect_dataset.py && python bootstrap/train_appraisal_head.py  # train head (local)
+python console.py                        # the cockpit at http://localhost:8000 -- zero deps, works offline
+cp .env.example .env                     # set GEMINI_API_KEY for the LLM-primary path (optional)
+pip install -r requirements.txt          # optional: encoder + memory/recall (numpy, sentence-transformers)
+
+for t in acceptance cognition character genesis drives self_concept expression memory behavior appraisal_distill; \
+  do python tests/${t}_test.py; done     # ten suites; all but memory are dependency-free
+
+python bootstrap/distill_appraisal_corpus.py 1000   # manufacture appraisal training data (needs key)
+python bootstrap/train_appraisal_head.py            # train the offline head (needs torch)
+python interactive.py                    # terminal shell; genesis.py / simulation.py: CLI entry points
 ```
 
 ## Layout
 ```
-core/    shared kernel: config, llm, encoder, appraisal (+ _head), impact, updater, memory, personality
-nodes/   formation:     temperament, llm_impact (trait push), character, values, moral, beliefs
-web/     the console:   server, engine_bridge, reply, static/ (UI)
-tests/   dependency-free behaviour checks
+core/    shared kernel: config (all knobs + priors), llm, encoder, appraisal (+_head, _log),
+         impact, updater, memory, personality
+nodes/   the faculties: temperament, llm_impact, llm_appraisal, cognition, character,
+         values, moral, beliefs, drives, self_concept, expression, behavior
+web/     the cockpit:   server (stdlib), engine_bridge (run_turn + snapshot), reply, static/
+tests/   ten behaviour suites, dependency-free by default
 root     entry scripts: console.py, interactive.py, simulation.py, genesis.py
 ```
-Modules import across the packages by path (`from core.config import ...`,
-`from nodes.character import ...`); the entry scripts stay at the root so
-`python console.py` / `python interactive.py` run unchanged. The split is by
-*layer* (shared kernel vs. formation nodes), not strictly by diagram box, because
-every node leans on the same kernel.
+Modules import across packages by path (`from core.config import ...`); entry scripts stay
+at the root. The split is by *layer* (shared kernel vs. faculties), and each faculty is one
+file with the same shape: seed/defaults, `refresh`, an interpret-tilt or push, `apply_event`,
+read-outs -- so the diagram box and the module map one-to-one.
