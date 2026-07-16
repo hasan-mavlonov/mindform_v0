@@ -109,7 +109,7 @@ Return ONLY valid JSON, with no markdown and no extra text, in exactly this form
 def _llm_delta(text, lens=""):
     """Ask the LLM for the signed OCEAN delta of one occurrence of ``text``.
 
-    Uses the configured OpenAI-compatible provider (Google Gemma 4 by default).
+    Uses the configured OpenAI-compatible provider (Gemini 3.5 Flash by default).
     Returns ``{O, C, E, A, N: float, "reasoning": str}``. Raises on any failure
     (missing key/package, network error, malformed JSON, missing/non-numeric
     trait) so ``push_from_text`` can fall back to the heuristic.

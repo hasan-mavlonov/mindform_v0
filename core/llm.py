@@ -1,7 +1,7 @@
 """Shared OpenAI-compatible JSON call for the formation engines (Gemma-hardened).
 
 Every formation node -- trait push (``llm_impact``), values, moral, belief, and genesis
-(``temperament``) -- asks the configured chat model (Google's Gemma 4 by default) for a
+(``temperament``) -- asks the configured chat model (Gemini 3.5 Flash by default) for a
 small JSON object. Gemma emits a ``<thought>`` block before its answer that cannot be
 turned off, so a too-small token budget truncates the reply mid-thought and leaves no
 JSON to parse (the classic ``Expecting value: line 1 column 1 (char 0)``).

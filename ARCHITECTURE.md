@@ -9,7 +9,7 @@ by bounded dynamics (pushes with **diminishing returns**, pulls back to set-poin
 formation is fast near zero and asymptotes at the extremes without ever running away.
 
 The engine is **LLM-primary, offline-complete**: with a key set, an OpenAI-compatible model
-(Google's Gemma 4 via the Gemini API by default) reads each experience; with no key, no
+(Gemini 3.5 Flash via the Gemini API by default) reads each experience; with no key, no
 `openai` package, or no network, every node falls back to deterministic heuristics and the
 whole product still runs -- including the UI.
 

@@ -4,7 +4,7 @@ The CHARACTER half of formation. Where ``llm_impact.push_from_text`` reads an
 experience for how it pushes the OCEAN *traits*, this reads the SAME experience for
 how it pushes the ten Schwartz *values* -- what one occurrence teaches the person to
 prize or dismiss. The contract mirrors ``llm_impact`` exactly: an OpenAI-compatible
-model (Google's Gemma 4 by default) returns a signed delta in [-1, 1] per value for a
+model (Gemini 3.5 Flash by default) returns a signed delta in [-1, 1] per value for a
 SINGLE occurrence; we scale it by ``LLM_FORMATION_RATE`` into a push that
 ``character.update_values`` then applies with the same diminishing returns. The engine
 accumulates repetition itself, so the prompt asks only about one occurrence.

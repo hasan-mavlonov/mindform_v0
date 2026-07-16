@@ -4,7 +4,7 @@ The MORAL-OUTLOOK half of CHARACTER. Where ``values.py`` reads an experience for
 pushes the Schwartz *values*, this reads the SAME experience for how it pushes the six
 Moral Foundations (Haidt) -- which moral concerns one occurrence teaches the person to
 hold more, or less. The contract mirrors ``values.py`` exactly: an OpenAI-compatible
-model (Google's Gemma 4 by default) returns a signed delta in [-1, 1] per foundation for
+model (Gemini 3.5 Flash by default) returns a signed delta in [-1, 1] per foundation for
 a SINGLE occurrence; ``character.update_moral`` then applies it with the same diminishing
 returns. The engine accumulates repetition itself, so the prompt asks about one occurrence.
 
