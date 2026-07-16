@@ -311,7 +311,7 @@ HABIT_MIN_RECURRENCE = 3
 BELIEF_SIM_THRESHOLD = 0.62   # cosine over belief statements to count as "the same belief"
 BELIEF_BACKLOG_CAP = 10       # max unreviewed memories turned into beliefs per turn
 
-# --- LLM push (OpenAI-compatible): default Google Gemma 4 via the Gemini API ---
+# --- LLM (OpenAI-compatible): default Gemini 3.5 Flash via the Gemini API ---
 # llm_impact.py asks an OpenAI-compatible chat model for a signed OCEAN delta in
 # [-1, 1] per trait, then push = clamp(LLM_FORMATION_RATE * delta); updater.py
 # applies it with diminishing returns. A max-strength delta (1.0) thus nudges a
@@ -319,10 +319,13 @@ BELIEF_BACKLOG_CAP = 10       # max unreviewed memories turned into beliefs per 
 # formation builds over many experiences. Falls back to the heuristic impact()
 # whenever no key/model is reachable.
 #
-# The default provider is Google's Gemma 4 through the Gemini API's
-# OpenAI-compatible endpoint. Put your Google AI Studio key in GEMINI_API_KEY
-# (copy .env.example). Any OpenAI-compatible endpoint still works -- point
-# LLM_BASE_URL + LLM_MODEL at it. The legacy DEEPSEEK_* names remain honored.
+# The default model is Gemini 3.5 Flash (fast AND smart; GA) through the Gemini
+# API's OpenAI-compatible endpoint -- put your Google AI Studio key in
+# GEMINI_API_KEY (copy .env.example). Need it even faster? gemini-3.1-flash-lite
+# is the current speed king. Any OpenAI-compatible provider works instead --
+# point LLM_API_KEY + LLM_BASE_URL + LLM_MODEL at it (e.g. OpenAI's GPT-5.x
+# small tiers; see .env.example). The previous Gemma 4 / DeepSeek setups keep
+# working via the same three variables; legacy DEEPSEEK_* names stay honored.
 def _env(*names, default=None):
     """First non-empty environment variable among ``names`` (real env wins)."""
     for name in names:
@@ -335,7 +338,7 @@ def _env(*names, default=None):
 LLM_API_KEY = _env("LLM_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY")
 LLM_BASE_URL = _env("LLM_BASE_URL", "DEEPSEEK_BASE_URL",
                     default="https://generativelanguage.googleapis.com/v1beta/openai/")
-LLM_MODEL = _env("LLM_MODEL", "DEEPSEEK_MODEL", default="gemma-4-31b-it")
+LLM_MODEL = _env("LLM_MODEL", "DEEPSEEK_MODEL", default="gemini-3.5-flash")
 LLM_FORMATION_RATE = float(_env("LLM_FORMATION_RATE", default="0.3"))
 
 # Backward-compatible aliases (older imports referenced these names).

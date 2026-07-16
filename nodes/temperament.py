@@ -11,7 +11,7 @@ This is Slice 1: it only *seeds* the baseline. The baseline-as-attractor dynamic
 -- the current trait pulled back toward ``mu``, and ``mu`` drifting slowly after a
 sustained ``x`` -- are applied in updater.py (Slice 2).
 
-The primary seed comes from an OpenAI-compatible LLM (Google's Gemma 4 by default).
+The primary seed comes from an OpenAI-compatible LLM (Gemini 3.5 Flash by default).
 If no API key is set, the ``openai`` package is missing, the network fails, or the
 reply is unparseable, ``seed_from_bio`` falls back to a deterministic lexical
 heuristic, so genesis never hard-depends on the network -- the same discipline as
@@ -120,7 +120,7 @@ def _heuristic_seed(bio):
 
 
 def _llm_seed(bio):
-    """Ask the LLM (Gemma 4 by default) to seed identity + mu + tau from the bio.
+    """Ask the LLM (Gemini 3.5 Flash by default) to seed identity + mu + tau from the bio.
 
     Raises on any failure (missing key/package, network, malformed JSON, missing
     or non-numeric trait) so ``seed_from_bio`` can fall back to the heuristic.

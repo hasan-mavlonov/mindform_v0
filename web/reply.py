@@ -18,7 +18,7 @@ The voice is the SOCIAL EXPRESSION node made audible (``nodes/expression.py``):
     dims, so the fallback voice sounds like the character too.
 
 Resolution order (same discipline as the engine's push):
-    1. the configured LLM (Google Gemma 4 by default) if a key is set  [primary]
+    1. the configured LLM (Gemini 3.5 Flash by default) if a key is set  [primary]
     2. the deterministic, style-driven ``expression.plain_reply``      [fallback]
 
 Gemma writes a ``<thought>`` block as plain text before its answer (the JSON paths
@@ -115,15 +115,17 @@ def _character_name(personality):
 
 
 def _llm_reply(personality, user_text, memories=None, appraisal=None):
-    """Ask Gemma for an in-character line.
+    """Ask the configured LLM for an in-character line.
 
+    Compatibility note kept from the Gemma era (harmless for other models):
     gemma-4-31b-it writes its reasoning as a literal ``<thought>`` block in the
     message content *before* the reply -- the model's own behaviour, not the API
     thinking feature (which it rejects), so it cannot be switched off. The budget
     must therefore be large enough for the thought to FINISH and the spoken line to
-    follow; ``strip_reasoning`` then drops the thought. A one-shot example keeps the
-    surfacing line on-format; one retry and the rule-based fallback cover the rare
-    truncation. Raises on failure so ``generate_reply`` falls back to the rule voice.
+    follow; ``strip_reasoning`` then drops the thought (a no-op on clean replies).
+    A one-shot example keeps the surfacing line on-format; one retry and the
+    rule-based fallback cover the rare truncation. Raises on failure so
+    ``generate_reply`` falls back to the rule voice.
     """
     if not LLM_API_KEY:
         raise RuntimeError("no LLM API key is set (GEMINI_API_KEY)")

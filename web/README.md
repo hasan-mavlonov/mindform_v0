@@ -11,7 +11,7 @@ PORT=9000 python console.py  # choose a port
 
 No build step, no extra dependencies — it runs on the Python standard library and
 plain JavaScript. With a `GEMINI_API_KEY` in `.env` the pushes and the
-character's replies come from the LLM (Google Gemma 4 by default); without one,
+character's replies come from the LLM (Gemini 3.5 Flash by default); without one,
 everything still works on the engine's heuristic fallback (you just won't get
 LLM-quality prose).
 
