@@ -46,6 +46,7 @@ land). Pure arithmetic; no LLM, no numpy -- it degrades exactly like every other
 from core.config import (
     BASIS, BEHAV, BEHAV_NAMES, BEHAV_MU, BEHAV_TAU, BEHAV_GAIN, BEHAV_CREDIT,
     BEHAV_INH_UP, BEHAV_INH_DOWN, BEHAV_SET_BLEND, BEHAV_EXPOSURE, BEHAV_ACTIVE_THRESH,
+    HABIT_MIN_RECURRENCE, HABIT_INERTIA_GAIN,
 )
 from core.updater import apply_diminishing
 
@@ -133,13 +134,26 @@ def reception(appraisal):
     return _clamp(v * (0.6 + 0.4 * max(0.0, s)))
 
 
-def apply_event(personality, appraisal):
+def apply_event(personality, appraisal, recurrence=0):
     """AFTER formation: the operant step (the world's answer trains the sensitivities),
     then the new action readiness is read and blended into the carried set.
 
     ``appraisal`` is the interpreted -- and therefore already intake-gated -- reading,
     which is what structurally damps the spiral: a withdrawn character's softened
     intensity also weakens the inhibition-training signal below.
+
+    PROCEDURAL memory (automaticity): ``recurrence`` is how many past experiences this one
+    resembles (``core.memory.recurrence``, this occurrence included -- the same count and
+    the same ``HABIT_MIN_RECURRENCE`` gate ``character.note_habit`` already uses, one
+    source of truth for "this is a recognized habit," not two competing thresholds). Once
+    recognized, the carried tendency blends in MORE of itself and less of this turn's fresh
+    reading (``HABIT_INERTIA_GAIN``) -- a well-worn response gets less re-deliberated each
+    time it recurs. This is on top of, not instead of, ``cognition._memory_tilt`` already
+    making a recurring situation's APPRAISAL read as more expected; that changes what the
+    fresh reading computes to, this changes how much weight it's given against what's
+    already carried -- a real, distinguishable effect, kept modest so it covers the
+    remainder rather than re-deriving the whole thing. ``recurrence=0`` (the default) is
+    never a habit, so this parameter is a pure opt-in.
     """
     b = dict(personality.get("behavior") or default_behavior(personality))
     last = b.get("last")
@@ -170,7 +184,9 @@ def apply_event(personality, appraisal):
     act_app, act_inh = _activations(nb, appraisal)
     tendency_now = _clamp(act_app - act_inh)
     old = float((b.get("set") or {}).get("tendency", 0.0))
-    tendency = _clamp(old + BEHAV_SET_BLEND * (tendency_now - old))
+    habit = recurrence >= HABIT_MIN_RECURRENCE          # a recognized recurring situation
+    blend = BEHAV_SET_BLEND * (1.0 - HABIT_INERTIA_GAIN) if habit else BEHAV_SET_BLEND
+    tendency = _clamp(old + blend * (tendency_now - old))
     nb["set"] = {"tendency": tendency, "mode": _mode(act_app, act_inh, tendency)}
     nb["reception"] = rec
     return {**personality, "behavior": nb}

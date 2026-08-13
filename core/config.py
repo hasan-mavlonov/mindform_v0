@@ -298,6 +298,15 @@ STYLE_LEARN = 0.20           # how strongly one reception entrenches/extinguishe
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3
+# PROCEDURAL memory (behavior.apply_event): once a situation is a recognized habit (the
+# SAME gate as above -- one source of truth, not a second competing threshold), the
+# carried action-readiness leans harder on itself and less on this turn's fresh reading --
+# automaticity, a well-worn response gets re-deliberated less each time. Layered on top of
+# cognition._memory_tilt (which already makes a recurring situation's APPRAISAL read as
+# more expected), so this is kept modest -- it covers the remaining action-readiness
+# rigidity, not the whole effect.
+HABIT_INERTIA_GAIN = 0.4     # a recognized habit's blend loses up to 40% of its
+                              # responsiveness to the fresh reading
 
 # --- Character: Belief (an open, propositional store formed by experience) ---
 # Unlike the fixed values / moral vectors, beliefs are open-ended propositions the

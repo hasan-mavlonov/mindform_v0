@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import core.llm as llm_mod
 llm_mod.LLM_API_KEY = ""           # never touch the network
 
-from core.config import BEHAV_ACTIVE_THRESH, BEHAV_EXPOSURE
+from core.config import BEHAV_ACTIVE_THRESH, BEHAV_EXPOSURE, HABIT_MIN_RECURRENCE
 import nodes.behavior as behavior
 from nodes.cognition import interpret, lens
 from nodes.expression import plain_reply, voice
@@ -190,6 +190,21 @@ check("note_act freezes stance, mode, and the style spoken with",
       acted["behavior"]["last"]["tendency"] == 0.5
       and acted["behavior"]["last"]["mode"] == "approach"
       and acted["behavior"]["last"]["style"]["warmth"] == 0.4)
+
+# --- procedural memory: a recognized habit is more inertial (automaticity) ----------
+p_habit = carry(person(E=0.5), 0.1, "steady")
+old_tendency = p_habit["behavior"]["set"]["tendency"]
+cue = appr(v=0.8, tc=0.8, inten=0.8)     # a strong, clearly approach-y cue
+
+fresh = behavior.apply_event(p_habit, cue, recurrence=0)["behavior"]["set"]["tendency"]
+habitual = behavior.apply_event(p_habit, cue, recurrence=HABIT_MIN_RECURRENCE)["behavior"]["set"]["tendency"]
+check("a recognized habit's tendency moves less per-turn than an identical fresh cue",
+      abs(habitual - old_tendency) < abs(fresh - old_tendency))
+check("the habit gate fires exactly at HABIT_MIN_RECURRENCE, not one short of it",
+      behavior.apply_event(p_habit, cue, recurrence=HABIT_MIN_RECURRENCE - 1)
+      ["behavior"]["set"]["tendency"] == fresh)
+check("apply_event's default reproduces recurrence=0 exactly -- a true no-op default",
+      behavior.apply_event(p_habit, cue) == behavior.apply_event(p_habit, cue, recurrence=0))
 
 # offline/legacy safety
 check("interpret() on a personality with no behavior key does not crash",
