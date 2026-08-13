@@ -193,6 +193,16 @@
     });
   }
 
+  // The roster is keyed by name alone, so a creation that collides with (or can't infer
+  // past) an existing name gets disambiguated server-side (core.personality.unique_name)
+  // rather than silently overwriting that other character. Say so when it happens.
+  function renameNote(snap) {
+    if (snap.renamed_from === undefined) return "";
+    return snap.renamed_from
+      ? ` (another character is already named ${snap.renamed_from} — saved as ${snap.name}.)`
+      : ` (couldn't tell their name from that — saved as ${snap.name}.)`;
+  }
+
   async function doGenesis() {
     const bio = $("bio-input").value.trim();
     const note = $("genesis-note");
@@ -202,7 +212,7 @@
       const snap = await API.createGenesis(bio);
       const via = snap.created_via === "heuristic"
         ? "seeded heuristically" : "seeded by " + snap.created_via;
-      enterWith(snap, `${snap.name} was born — ${via}.`);
+      enterWith(snap, `${snap.name} was born — ${via}.${renameNote(snap)}`);
     } catch (e) {
       note.className = "form-note err"; note.textContent = e.message || "Something went wrong.";
     } finally { setFormBusy("genesis", false); }
@@ -223,7 +233,7 @@
     setFormBusy("manual", true, "Creating…");
     try {
       const snap = await API.createManual(identity, levels);
-      enterWith(snap, `${snap.name} is ready. Tell them what happens next.`);
+      enterWith(snap, `${snap.name} is ready. Tell them what happens next.${renameNote(snap)}`);
     } catch (e) {
       note.className = "form-note err"; note.textContent = e.message || "Something went wrong.";
     } finally { setFormBusy("manual", false); }

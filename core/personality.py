@@ -178,6 +178,31 @@ def character_path(name):
     return os.path.join(CHARACTERS_DIR, _slug(name) + ".json")
 
 
+def character_exists(name):
+    """Whether a character is already saved under this name's slug."""
+    return os.path.exists(character_path(name))
+
+
+def unique_name(name):
+    """A name guaranteed not to collide with an already-saved character's slug.
+
+    The roster is keyed purely by ``_slug(name)``, with no other identity check, so two
+    characters that resolve to the same slug -- including two blank ("unnamed") ones from
+    biographies with no extractable name, or simply two people the author both called
+    "Aisha" -- would otherwise silently overwrite one another on save. FOR CREATION CALL
+    SITES ONLY: returns ``name`` unchanged when its slug is free, otherwise a disambiguated
+    "name 2", "name 3", ... Never call this before saving an EXISTING character's turn
+    update, or its file would fork instead of being continued.
+    """
+    base = (name or "").strip() or "unnamed"
+    if not character_exists(base):
+        return base
+    n = 2
+    while character_exists(f"{base} {n}"):
+        n += 1
+    return f"{base} {n}"
+
+
 def save_character(personality):
     """Save a character to the roster, keyed by its identity name. Returns the path."""
     name = (personality.get("identity") or {}).get("name")

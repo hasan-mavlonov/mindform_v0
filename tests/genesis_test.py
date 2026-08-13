@@ -74,6 +74,31 @@ with tempfile.TemporaryDirectory() as tmp:
     roster_lists = names == ["Aisha", "Bordi"]
     roster_reloads = P.load_character("Bordi")["temperament"]["mu"]["C"] == 0.8
 
+    # unique_name: creation must never silently overwrite an existing save (the bug --
+    # two characters resolving to the same slug, most commonly two "unnamed" ones from
+    # bios with no extractable name, or two authored people who share a name).
+    free_name_unchanged = P.unique_name("Zarina") == "Zarina"
+    P.save_character(build_character({"name": "Zarina"}, chosen_mu)[0])
+    taken_name_disambiguated = P.unique_name("Zarina") == "Zarina 2"
+    P.save_character(build_character({"name": "Zarina 2"}, chosen_mu)[0])
+    third_collision_disambiguated = P.unique_name("Zarina") == "Zarina 3"
+    blank_name_falls_back = P.unique_name(None) == "unnamed" or P.unique_name("") == "unnamed"
+
+    # end to end: two DIFFERENT people whose names can't be told apart (both blank, as a
+    # bio with no capitalized name would seed) must both survive on the roster distinctly,
+    # not collapse into one overwritten "unnamed" record.
+    p1, _, _ = genesis("a shy, anxious, sensitive poet, easily overwhelmed.")   # no name in text
+    p1["identity"]["name"] = P.unique_name(p1["identity"].get("name"))
+    P.save_character(p1)
+    p2, _, _ = genesis("a bold, outgoing, disciplined, calm athlete.")         # also no name
+    p2["identity"]["name"] = P.unique_name(p2["identity"].get("name"))
+    P.save_character(p2)
+    unnamed_both_survive = (
+        p1["identity"]["name"] != p2["identity"]["name"]
+        and P.load_character(p1["identity"]["name"])["temperament"]["mu"]["N"] > 0
+        and P.load_character(p2["identity"]["name"])["temperament"]["mu"]["E"] > 0
+    )
+
 # the trait update still moves a trait and preserves the identity/temperament fields
 after = update_personality(default_personality(), impact(appraise("I went to a party and had fun.")))
 update_preserves = after["traits"]["E"] > 0 and "temperament" in after and "identity" in after
@@ -95,6 +120,11 @@ checks = {
     "build_character uses chosen mu (no LLM)": manual_uses_chosen,
     "roster saves + lists multiple characters": roster_lists,
     "roster reloads a character by name": roster_reloads,
+    "unique_name leaves a free name unchanged": free_name_unchanged,
+    "unique_name disambiguates a taken name": taken_name_disambiguated,
+    "unique_name disambiguates past a second collision": third_collision_disambiguated,
+    "unique_name falls back to 'unnamed' for a blank name": blank_name_falls_back,
+    "two nameless creations both survive the roster, not one overwritten": unnamed_both_survive,
     "trait update still works + preserves temperament/identity": update_preserves,
 }
 
