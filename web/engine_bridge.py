@@ -582,7 +582,9 @@ def run_turn(name, message):
     # BEHAVIOR: the world's answer trains the sensitivities (rewarded own action teaches
     # approach; threat trains inhibition; a carried lean-in is credited with how this
     # message received it), and the new action readiness is read and carried forward.
-    personality = apply_behavior_event(personality, appraisal)
+    # PROCEDURAL memory: recurrence (this occurrence included, matching note_habit's own
+    # "+1" convention below) tells it whether this is a recognized habit -- automaticity.
+    personality = apply_behavior_event(personality, appraisal, recurrence=(seen or 0) + 1)
 
     # EXPRESSION (operant shaping): the manner actually SPOKEN WITH last turn (frozen in the
     # act record) is entrenched or extinguished by how this message received it -- read
