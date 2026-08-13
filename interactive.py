@@ -194,7 +194,8 @@ def run():
         name = (personality.get("identity") or {}).get("name")
         embedding = encode_text(text)
         seen = recurrence(embedding, name=name)
-        recalled = recall(embedding, name=name)              # past only (before interpret)
+        recalled = recall(embedding, name=name,               # past only (before interpret)
+                          current_turn=personality.get("experience_count", 0))
         appraisal = interpret(appraise(text), personality, recalled=recalled)  # traits + memory
         view = lens(personality, recalled=recalled)
 

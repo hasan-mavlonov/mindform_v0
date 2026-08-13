@@ -388,6 +388,11 @@ def _recall(text, name, personality=None):
     MOTIVATED RETRIEVAL: recall fetches a wider candidate pool, then the character's
     active needs re-rank it (``drives.recall_bias``) -- what they lack shapes what comes
     to mind. Pass ``personality`` with its drives already refreshed.
+
+    EMOTIONAL MEMORY, retrieval decay: recall is also told the character's current turn
+    number (``experience_count``, pre-increment -- so a memory stored last turn reads as
+    age 0), so a stale, unremarkable memory fades in favor of a fresh one at similar
+    relevance (``core.memory._decay_factor``).
     """
     try:
         from core.encoder import encode_text          # heavy: sentence-transformers
@@ -397,7 +402,8 @@ def _recall(text, name, personality=None):
         return None, None, []
     try:
         embedding = encode_text(text)
-        candidates = recall(embedding, name=name, k=RECALL_CANDIDATES)
+        current_turn = (personality or {}).get("experience_count", 0)
+        candidates = recall(embedding, name=name, k=RECALL_CANDIDATES, current_turn=current_turn)
         recalled = recall_bias(candidates, (personality or {}).get("drives"))
         return embedding, recurrence(embedding, name=name), recalled
     except Exception as exc:

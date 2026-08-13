@@ -431,6 +431,24 @@ RECURRENCE_THRESHOLD = 0.40   # cosine similarity to count as "the same kind of 
 # ties among what min_score already judged related -- it cannot surface an unrelated memory.
 # drives.recall_bias re-ranks this same pool again, on top, by what is currently NEEDED.
 INTENSITY_RECALL_GAIN = 0.50  # how strongly a memory's own intensity re-ranks recall (0 = off)
+# Emotional memory, part two: retrieval DECAY. Not deletion -- the text log and every
+# embedding stay forever (core.memory's own docstring and the README both promise nothing
+# is forgotten). What fades is RETRIEVABILITY: an old, emotionally flat memory should rank
+# below a fresh one at the same cosine similarity, the way an unremarkable Tuesday from a
+# year ago is harder to bring to mind than one from yesterday. A vivid ("flashbulb")
+# memory resists this almost entirely -- real memory keeps searing moments sharp for
+# decades while mundane ones blur. Bounded (never below FLOOR) and applied INSIDE the same
+# min_score relevance floor as INTENSITY_RECALL_GAIN, so decay can only re-rank among
+# already-related memories, never surface or bury one the floor didn't already gate.
+MEMORY_DECAY_HALF_LIFE = 20          # turns for an ordinary memory's recall weight to fall
+                                      # halfway to the floor -- a judgment call (like BEHAV_TAU
+                                      # or ESTEEM_RELAX), not an empirical measurement (unlike
+                                      # RECURRENCE_THRESHOLD, which was calibrated against
+                                      # measured cosines)
+MEMORY_DECAY_FLOOR = 0.35            # decay never pushes recall weight below this fraction of
+                                      # its undecayed value
+MEMORY_DECAY_FLASHBULB_PROTECT = 0.7 # 0 = no protection from decay, 1 = full immunity at
+                                      # max intensity -- vivid memories decay much more slowly
 
 # --- Temperament (genesis baseline + dynamics) ---
 # A character is born (temperament.genesis) with a per-trait OCEAN baseline `mu`

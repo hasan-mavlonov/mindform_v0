@@ -23,7 +23,10 @@ import threading
 
 import numpy as np
 
-from core.config import RECURRENCE_THRESHOLD, INTENSITY_RECALL_GAIN
+from core.config import (
+    RECURRENCE_THRESHOLD, INTENSITY_RECALL_GAIN,
+    MEMORY_DECAY_HALF_LIFE, MEMORY_DECAY_FLOOR, MEMORY_DECAY_FLASHBULB_PROTECT,
+)
 from core.personality import read_traits, _slug, CHARACTERS_DIR
 
 DEFAULT_MEMORY_FILE = "data/memories.json"
@@ -120,6 +123,11 @@ def create_memory(text, embedding, appraisal, push, personality_after, name=None
         "appraisal": appraisal,
         "push": push,
         "traits_after": read_traits(personality_after),
+        # this experience's turn number, for recall's retrieval decay -- free, since
+        # update_personality already increments experience_count before this runs. A
+        # missing/None "turn" (every pre-existing record) means "no stamp -> no decay",
+        # so no migration is needed; legacy memories simply never age.
+        "turn": personality_after.get("experience_count"),
     }
     # the stance this experience was met WITH (behavior's carried set gated its intake) --
     # stored per record so the act history accrues in the hub
@@ -161,25 +169,53 @@ def _intensity(record):
     return float((record.get("appraisal") or {}).get("intensity", 0.0))
 
 
-def _recall_weight(record):
-    """Cosine boosted by how emotionally vivid the memory was -- multiplicative, so a
-    strong memory can edge out a flatter, slightly-more-similar one, but never on its own
-    grants relevance the cosine floor (``recall``'s ``min_score``) didn't already grant."""
-    return record["score"] * (1.0 + INTENSITY_RECALL_GAIN * _intensity(record))
+def _decay_factor(record, current_turn):
+    """How much retrieval decay has dulled this memory, in ``(MEMORY_DECAY_FLOOR, 1.0]``.
+
+    ``1.0`` (no decay) when the caller isn't tracking turns, or this record predates the
+    "turn" stamp -- decay never invents an age for a memory that never recorded one.
+    Otherwise an exponential fade toward the floor, slowed by the memory's own intensity
+    (a vivid memory ages far more slowly -- the flashbulb effect); never reaches 0, so
+    decay can only re-rank, never erase (see ``recall``).
+    """
+    if current_turn is None:
+        return 1.0
+    turn = record.get("turn")
+    if turn is None:
+        return 1.0
+    age = max(0, current_turn - turn)
+    if age == 0:
+        return 1.0
+    protect = MEMORY_DECAY_FLASHBULB_PROTECT * _intensity(record)
+    decayed = 0.5 ** (age * (1.0 - protect) / MEMORY_DECAY_HALF_LIFE)
+    return MEMORY_DECAY_FLOOR + (1.0 - MEMORY_DECAY_FLOOR) * decayed
 
 
-def recall(query_embedding, name=None, k=3, min_score=0.25):
-    """The k past memories most relevant to ``query_embedding`` (most vivid-and-similar first).
+def _recall_weight(record, current_turn=None):
+    """Cosine boosted by how emotionally vivid the memory was and dulled by how long ago
+    it happened -- both multiplicative, so a strong or recent memory can edge out a flatter
+    or staler, slightly-more-similar one, but neither ever grants relevance the cosine floor
+    (``recall``'s ``min_score``) didn't already grant."""
+    return (record["score"] * (1.0 + INTENSITY_RECALL_GAIN * _intensity(record))
+            * _decay_factor(record, current_turn))
+
+
+def recall(query_embedding, name=None, k=3, min_score=0.25, current_turn=None):
+    """The k past memories most relevant to ``query_embedding`` (most vivid-recent-and-similar
+    first).
 
     Gathers every memory whose RAW cosine clears ``min_score`` -- so only genuinely related
     experiences are ever eligible -- then breaks ties among them by how emotionally vivid
-    each one was (``INTENSITY_RECALL_GAIN``): a searing memory can outrank a flatter one at
-    similar topical relevance, the way it would come to mind first for a person. The
-    displayed ``score`` stays the honest cosine (selection is weighted, similarity is not)
-    -- mirrors ``drives.recall_bias``, which re-ranks this same returned pool again, on top,
-    by what the character currently needs. Empty when there's no relevant history -- the
-    same offline-safe contract as ``recurrence`` (needs the sidecar + numpy). Call it BEFORE
-    storing the current experience so a message never just recalls itself.
+    each one was (``INTENSITY_RECALL_GAIN``) and, when ``current_turn`` is supplied, how
+    long ago it happened (retrieval decay, ``MEMORY_DECAY_HALF_LIFE`` -- omit it, as every
+    caller did before this existed, to skip decay entirely and rank by vividness alone).
+    A searing memory can outrank a flatter or staler one at similar topical relevance, the
+    way it would come to mind first for a person. The displayed ``score`` stays the honest
+    cosine (selection is weighted, similarity is not) -- mirrors ``drives.recall_bias``,
+    which re-ranks this same returned pool again, on top, by what the character currently
+    needs. Empty when there's no relevant history -- the same offline-safe contract as
+    ``recurrence`` (needs the sidecar + numpy). Call it BEFORE storing the current
+    experience so a message never just recalls itself.
     """
     matrix = load_embeddings(name)
     if matrix.size == 0:
@@ -197,5 +233,5 @@ def recall(query_embedding, name=None, k=3, min_score=0.25):
         record = dict(memories[int(i)])
         record["score"] = score                     # honest cosine, never reweighted
         eligible.append(record)
-    eligible.sort(key=_recall_weight, reverse=True)
+    eligible.sort(key=lambda r: _recall_weight(r, current_turn), reverse=True)
     return eligible[:k]
