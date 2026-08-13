@@ -29,6 +29,9 @@ from nodes.character import (
     read_values, read_moral, read_beliefs,
 )
 from core.memory import create_memory, recurrence, recall, load_memories
+from core.belief_memory import (
+    load_belief_embeddings, append_belief_embeddings, recall_beliefs,
+)
 
 
 def print_state(personality):
@@ -196,8 +199,10 @@ def run():
         seen = recurrence(embedding, name=name)
         recalled = recall(embedding, name=name,               # past only (before interpret)
                           current_turn=personality.get("experience_count", 0))
-        appraisal = interpret(appraise(text), personality, recalled=recalled)  # traits + memory
-        view = lens(personality, recalled=recalled)
+        recalled_beliefs = recall_beliefs(embedding, personality.get("character") or {}, name=name)
+        appraisal = interpret(appraise(text), personality, recalled=recalled,
+                              recalled_beliefs=recalled_beliefs)  # traits + episodic + semantic memory
+        view = lens(personality, recalled=recalled, recalled_beliefs=recalled_beliefs)
 
         push, source, reasoning = push_from_text(text, appraisal, lens=view)
         personality = update_personality(personality, push)
@@ -213,8 +218,15 @@ def run():
 
         create_memory(text, embedding, appraisal, push, personality, name=name)
         # BELIEF: turn this experience (now in memory) -- and any offline backlog --
-        # into beliefs, deduped by embedding similarity. A no-op without the LLM.
-        character = form_beliefs(personality["character"], load_memories(name), embedder=encode_text)
+        # into beliefs, deduped by embedding similarity (the persisted sidecar skips
+        # re-embedding the whole belief history). A no-op without the LLM.
+        belief_matrix = load_belief_embeddings(name)
+        before_beliefs = len((personality["character"].get("beliefs")) or [])
+        character = form_beliefs(personality["character"], load_memories(name),
+                                 embedder=encode_text, belief_matrix=belief_matrix)
+        new_statements = [b["statement"] for b in (character.get("beliefs") or [])[before_beliefs:]]
+        if new_statements:
+            append_belief_embeddings(encode_text(new_statements), name)
         personality = {**personality, "character": character}
         save_character(personality)
 

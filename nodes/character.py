@@ -96,24 +96,34 @@ def _cosine(a, b):
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _find_belief(beliefs, statement, embedder):
+def _find_belief(beliefs, statement, embedder, belief_matrix=None):
     """The existing belief this statement matches, or None. Embedding-similarity when an
-    ``embedder`` (encoder) is available; punctuation-insensitive text match otherwise."""
+    ``embedder`` (encoder) is available; punctuation-insensitive text match otherwise.
+
+    ``belief_matrix``, when given, is the PERSISTED belief-embedding sidecar
+    (``core.belief_memory.load_belief_embeddings``), rows aligned to ``beliefs[:len(...)]``
+    -- reusing it skips re-embedding the whole belief history on every single match. Only
+    beliefs beyond it (added earlier in this same batch, not yet persisted) fall back to a
+    fresh embed -- a small bounded count, never the full backlog. ``None`` (the default)
+    reproduces the original always-re-embed behavior exactly.
+    """
     if not beliefs:
         return None
     if embedder is None:
         key = _belief_key(statement)
         return next((b for b in beliefs if _belief_key(b.get("statement", "")) == key), None)
     target = embedder(statement)
+    stamped = len(belief_matrix) if belief_matrix is not None else 0
     best, best_sim = None, 0.0
-    for belief in beliefs:
-        sim = _cosine(target, embedder(belief.get("statement", "")))
+    for i, belief in enumerate(beliefs):
+        vector = belief_matrix[i] if i < stamped else embedder(belief.get("statement", ""))
+        sim = _cosine(target, vector)
         if sim > best_sim:
             best, best_sim = belief, sim
     return best if best_sim >= BELIEF_SIM_THRESHOLD else None
 
 
-def update_beliefs(character, extracted, embedder=None):
+def update_beliefs(character, extracted, embedder=None, belief_matrix=None):
     """Merge extracted ``{statement, confidence}`` beliefs into the store.
 
     A new statement is added; a matching one is reinforced. ``confidence`` is the per-
@@ -126,7 +136,7 @@ def update_beliefs(character, extracted, embedder=None):
         if not statement:
             continue
         push = clamp(LLM_FORMATION_RATE * float(item.get("confidence", 0.0)))
-        match = _find_belief(beliefs, statement, embedder)
+        match = _find_belief(beliefs, statement, embedder, belief_matrix)
         if match is not None:
             match["confidence"] = clamp(match["confidence"] + push * (1 - abs(match["confidence"])))
             match["count"] = match.get("count", 0) + 1
@@ -135,7 +145,7 @@ def update_beliefs(character, extracted, embedder=None):
     return {**character, "beliefs": beliefs}
 
 
-def form_beliefs(character, memories, embedder=None):
+def form_beliefs(character, memories, embedder=None, belief_matrix=None):
     """Turn unreviewed memories into beliefs (the reflection pass).
 
     Walks ``memories[beliefs_reviewed:]`` (capped at ``BELIEF_BACKLOG_CAP`` per call),
@@ -153,7 +163,7 @@ def form_beliefs(character, memories, embedder=None):
         except Exception as exc:        # no LLM / failure -> leave the rest for later
             log.info("belief extraction unavailable (%s); leaving backlog", exc)
             break
-        character = update_beliefs(character, extracted, embedder)
+        character = update_beliefs(character, extracted, embedder, belief_matrix)
         processed += 1
     if processed != reviewed:
         character = {**character, "beliefs_reviewed": processed}

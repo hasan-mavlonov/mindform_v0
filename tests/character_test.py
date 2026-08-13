@@ -217,6 +217,47 @@ check("snapshot character block includes the beliefs list",
       "beliefs" in snap["character"])
 
 
+# --- 12. Belief: the belief_matrix fast path (skips re-embedding the whole history) -----
+_EMBED_TABLE = {
+    "hard work pays off": [1.0, 0.0, 0.0],
+    "hard work truly pays off": [0.99, 0.02, 0.0],          # near-duplicate rewording
+    "the world is dangerous": [0.0, 1.0, 0.0],
+    "the world is truly dangerous": [0.02, 0.98, 0.0],      # near-duplicate rewording
+}
+embed_calls = []
+
+
+def counting_embedder(text):
+    embed_calls.append(text)
+    return _EMBED_TABLE.get(text, [0.0, 0.0, 0.0])
+
+
+bm1 = update_beliefs(default_character(), [{"statement": "hard work pays off", "confidence": 0.5}],
+                     embedder=counting_embedder)
+belief_matrix = [_EMBED_TABLE["hard work pays off"]]        # simulates the persisted sidecar
+
+embed_calls.clear()
+bm2 = update_beliefs(bm1, [{"statement": "hard work truly pays off", "confidence": 0.4}],
+                     embedder=counting_embedder, belief_matrix=belief_matrix)
+check("belief_matrix fast path: a near-duplicate reinforces the stamped belief, not a new one",
+      len(bm2["beliefs"]) == 1 and bm2["beliefs"][0]["count"] == 2)
+check("belief_matrix fast path: the stamped belief's own text is never re-embedded",
+      "hard work pays off" not in embed_calls and embed_calls == ["hard work truly pays off"])
+
+# a belief added EARLIER IN THE SAME BATCH (beyond the stamped matrix, not yet persisted)
+# must still be found -- falling back to a fresh embed, not silently missed
+bm3 = update_beliefs(bm2, [
+    {"statement": "the world is dangerous", "confidence": -0.5},
+    {"statement": "the world is truly dangerous", "confidence": -0.4},
+], embedder=counting_embedder, belief_matrix=belief_matrix)   # matrix still only covers belief #1
+check("belief_matrix fast path: a same-batch belief beyond the matrix is still matched via fallback",
+      len(bm3["beliefs"]) == 2 and bm3["beliefs"][1]["count"] == 2)
+
+check("belief_matrix=None reproduces the original always-re-embed behavior exactly",
+      update_beliefs(bm1, [{"statement": "hard work truly pays off", "confidence": 0.4}],
+                     embedder=counting_embedder)["beliefs"][0]["count"] == 2)
+
+
 print("\nRESULTS:")
 passed = sum(1 for _, ok in results if ok)
 for name, ok in results:

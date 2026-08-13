@@ -69,12 +69,13 @@ python bootstrap/train_appraisal_head.py            # train the offline head (ne
 ## Tests
 
 ```bash
-for t in acceptance cognition character genesis drives self_concept expression memory behavior appraisal_distill; do
+for t in acceptance cognition character genesis drives self_concept expression memory belief_memory behavior appraisal_distill; do
   python tests/${t}_test.py
 done
 ```
-Ten suites, ~300 checks, dependency-free by default (`memory` needs numpy and skips cleanly
-without it). Every feedback loop ships with a stability argument and a no-runaway test.
+Eleven suites, ~315 checks, dependency-free by default (`memory` and `belief_memory` need
+numpy and skip cleanly without it). Every feedback loop ships with a stability argument and
+a no-runaway test.
 
 ## Docs & layout
 
