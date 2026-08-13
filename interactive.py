@@ -14,7 +14,7 @@ Commands (while talking):
 
 from core.config import IDENTITY_FIELDS, TRAIT_QUESTIONS, TRAIT_LEVELS
 from core.personality import (
-    save_character, list_characters, read_traits, read_temperament,
+    save_character, list_characters, read_traits, read_temperament, unique_name,
 )
 from nodes.temperament import build_character, genesis
 from core.encoder import encode_text
@@ -97,8 +97,15 @@ def create_new():
     identity = ask_identity()
     mu = ask_traits()
     personality, _, _ = build_character(identity, mu)
+    # The roster is keyed by name-slug alone -- saving over an existing name (typed twice,
+    # by this author or another) would silently destroy that other character. Disambiguate
+    # before the save ever happens, exactly like the cockpit's creation paths.
+    final_name = unique_name(personality["identity"].get("name"))
+    if final_name != identity["name"]:
+        print(f"\n'{identity['name']}' is already taken -- saving as '{final_name}' instead.")
+    personality["identity"]["name"] = final_name
     path = save_character(personality)
-    print(f"\nCreated '{identity['name']}'  ->  {path}")
+    print(f"\nCreated '{final_name}'  ->  {path}")
     print_state(personality)
     return personality
 
@@ -171,9 +178,15 @@ def run():
                 print("usage: /genesis <a short biography>")
                 continue
             personality, source, reasoning = genesis(bio)
+            requested = (personality["identity"].get("name") or "").strip()
+            final_name = unique_name(requested)          # see create_new(): no silent overwrite
+            personality["identity"]["name"] = final_name
             save_character(personality)
             print(f"\nBorn a character (via {source})."
                   + (f"  --  {reasoning}" if reasoning else ""))
+            if final_name != (requested or "unnamed"):
+                reason = f"already taken by '{requested}'" if requested else "no name came through"
+                print(f"({reason} -- saved as '{final_name}'.)")
             print_state(personality)
             continue
 

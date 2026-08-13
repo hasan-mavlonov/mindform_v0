@@ -51,7 +51,7 @@ from nodes.behavior import (
 )
 from core.impact import clamp
 from core.personality import (
-    save_character, load_character, list_characters,
+    save_character, load_character, list_characters, unique_name,
     read_traits, read_temperament,
 )
 from web.reply import generate_reply
@@ -326,11 +326,24 @@ def load_snapshot(name):
 
 # --- Creation paths (mirror interactive.py's three authoring routes) ---------
 def create_genesis(bio):
-    """Born from a one-line biography (DeepSeek seed, heuristic fallback)."""
+    """Born from a one-line biography (DeepSeek seed, heuristic fallback).
+
+    The roster is keyed by name-slug alone (``core.personality.character_path``), so a
+    bio the seed can't extract a name from -- or one that just happens to share a name
+    with someone already on the roster -- would otherwise silently overwrite that other
+    character on save. ``unique_name`` disambiguates before the save ever happens; the
+    snapshot reports the rename (``renamed_from``) so the UI can say so instead of the
+    character quietly not being who the story said.
+    """
     personality, source, reasoning = genesis(bio)
+    requested = (personality["identity"].get("name") or "").strip()
+    final_name = unique_name(requested)
+    personality["identity"]["name"] = final_name
     save_character(personality)
     snap = snapshot(personality, source=source, reasoning=reasoning)
     snap["created_via"] = source
+    if final_name != (requested or "unnamed"):
+        snap["renamed_from"] = requested or None
     return snap
 
 
@@ -351,9 +364,14 @@ def create_manual(identity, levels):
         mu[key] = TRAIT_LEVELS[level]
     clean_identity = {k: v for k, v in (identity or {}).items() if v not in (None, "")}
     personality, _, _ = build_character(clean_identity, mu)
+    requested = (personality["identity"].get("name") or "").strip()
+    final_name = unique_name(requested)                    # see create_genesis: no silent overwrite
+    personality["identity"]["name"] = final_name
     save_character(personality)
     snap = snapshot(personality)
     snap["created_via"] = "manual"
+    if final_name != requested:
+        snap["renamed_from"] = requested or None
     return snap
 
 
