@@ -11,20 +11,29 @@ With no name, memory falls back to a single shared log (``data/memories.json``),
 simulation demo uses. Older logs that still carry inline ``embedding`` fields are migrated
 into the sidecar on first touch -- losing nothing.
 
-Today the only read is ``recurrence`` (how many past experiences resemble this one, for
-habits / the "seen before" count); the sidecar matrix is also what a future ``recall``
-API will query.
+Reads: ``recurrence`` (how many past experiences resemble this one, for habits / the
+"seen before" count) and ``recall`` (the k most relevant past memories -- ranked by
+similarity, then by how emotionally vivid they were; ``drives.recall_bias`` re-ranks the
+same pool again on top, by what the character currently needs).
 """
 
 import json
 import os
+import threading
 
 import numpy as np
 
-from core.config import RECURRENCE_THRESHOLD
+from core.config import RECURRENCE_THRESHOLD, INTENSITY_RECALL_GAIN
 from core.personality import read_traits, _slug, CHARACTERS_DIR
 
 DEFAULT_MEMORY_FILE = "data/memories.json"
+
+# Guards a memory's two-file write (the text log + its embedding-sidecar row) as one
+# critical section. The cockpit runs each turn on its own thread (ThreadingHTTPServer);
+# without this, two concurrent turns on the same character could interleave their writes
+# and leave sidecar row i permanently misaligned with log record i -- silently corrupting
+# every future recall/recurrence for that character, not just losing one update.
+_write_lock = threading.Lock()
 
 
 def _memory_path(name=None):
@@ -118,10 +127,11 @@ def create_memory(text, embedding, appraisal, push, personality_after, name=None
     if stance:
         memory["stance"] = {"tendency": stance.get("tendency", 0.0),
                             "mode": stance.get("mode", "steady")}
-    memories = load_memories(name)
-    memories.append(memory)
-    _write_memories(memories, name)
-    _append_embedding(embedding, name)
+    with _write_lock:                        # keep the log and its embedding row aligned
+        memories = load_memories(name)
+        memories.append(memory)
+        _write_memories(memories, name)
+        _append_embedding(embedding, name)
     return memory
 
 
@@ -146,14 +156,30 @@ def recurrence(embedding, name=None):
     return int((sims >= RECURRENCE_THRESHOLD).sum())
 
 
-def recall(query_embedding, name=None, k=3, min_score=0.25):
-    """The k past memories most relevant to ``query_embedding`` (most similar first).
+def _intensity(record):
+    """How emotionally strong this stored memory was, from its own (interpreted) appraisal."""
+    return float((record.get("appraisal") or {}).get("intensity", 0.0))
 
-    Returns up to ``k`` memory records (the slim text-log entries) each tagged with a
-    ``score`` (cosine), dropping anything below ``min_score`` so only genuinely related
-    experiences surface. Empty when there's no relevant history -- the same offline-safe
-    contract as ``recurrence`` (needs the sidecar + numpy). Call it BEFORE storing the
-    current experience so a message never just recalls itself.
+
+def _recall_weight(record):
+    """Cosine boosted by how emotionally vivid the memory was -- multiplicative, so a
+    strong memory can edge out a flatter, slightly-more-similar one, but never on its own
+    grants relevance the cosine floor (``recall``'s ``min_score``) didn't already grant."""
+    return record["score"] * (1.0 + INTENSITY_RECALL_GAIN * _intensity(record))
+
+
+def recall(query_embedding, name=None, k=3, min_score=0.25):
+    """The k past memories most relevant to ``query_embedding`` (most vivid-and-similar first).
+
+    Gathers every memory whose RAW cosine clears ``min_score`` -- so only genuinely related
+    experiences are ever eligible -- then breaks ties among them by how emotionally vivid
+    each one was (``INTENSITY_RECALL_GAIN``): a searing memory can outrank a flatter one at
+    similar topical relevance, the way it would come to mind first for a person. The
+    displayed ``score`` stays the honest cosine (selection is weighted, similarity is not)
+    -- mirrors ``drives.recall_bias``, which re-ranks this same returned pool again, on top,
+    by what the character currently needs. Empty when there's no relevant history -- the
+    same offline-safe contract as ``recurrence`` (needs the sidecar + numpy). Call it BEFORE
+    storing the current experience so a message never just recalls itself.
     """
     matrix = load_embeddings(name)
     if matrix.size == 0:
@@ -163,12 +189,13 @@ def recall(query_embedding, name=None, k=3, min_score=0.25):
     n = min(len(memories), sims.shape[0])
     if n == 0:
         return []
-    out = []
-    for i in np.argsort(sims[:n])[::-1][:k]:        # top-k by similarity, descending
+    eligible = []
+    for i in np.argsort(sims[:n])[::-1]:            # descending by raw cosine
         score = float(sims[int(i)])
         if score < min_score:
             break                                   # the rest score no higher
         record = dict(memories[int(i)])
-        record["score"] = score
-        out.append(record)
-    return out
+        record["score"] = score                     # honest cosine, never reweighted
+        eligible.append(record)
+    eligible.sort(key=_recall_weight, reverse=True)
+    return eligible[:k]
