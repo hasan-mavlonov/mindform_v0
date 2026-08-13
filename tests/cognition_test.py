@@ -121,6 +121,53 @@ faint = [mem(score=0.30)]
 check("a faint neutral memory adds no brief or tag",
       lens(person(), recalled=faint) == "" and read_lens(person(), recalled=faint) == "")
 
+# --- SEMANTIC memory: a recalled belief bends perception too (no valence pull) ---------
+def bel(statement="a belief", confidence=0.8, score=0.8):
+    """A recalled belief in the slim shape belief_memory.recall_beliefs returns."""
+    return {"statement": statement, "confidence": confidence, "score": score}
+
+
+raw3 = {"valence": 0.2, "threat_challenge": 0.0, "novelty": 0.3, "self_relevance": 0.3}
+
+# no relevant belief -> identical to the belief-free interpretation (backward compatible)
+check("empty recalled_beliefs == interpretation without it",
+      interpret(raw3, person(), recalled_beliefs=[])
+      == interpret(raw3, person(), recalled_beliefs=None)
+      == interpret(raw3, person()))
+
+base3 = interpret(raw3, person())
+firm = interpret(raw3, person(), recalled_beliefs=[bel(confidence=0.9, score=0.9)])
+check("a firmly-held, relevant belief damps perceived novelty",
+      firm["novelty"] < base3["novelty"])
+check("a firmly-held, relevant belief raises self-relevance",
+      firm["self_relevance"] > base3["self_relevance"])
+
+shaky = interpret(raw3, person(), recalled_beliefs=[bel(confidence=0.05, score=0.9)])
+check("a shaky, barely-held belief tilts far less than a firm one",
+      (base3["novelty"] - shaky["novelty"]) < (base3["novelty"] - firm["novelty"]))
+
+# THE regression guard: confidence is how firmly a belief is held, NOT whether its content
+# is good or bad news -- a positively- and negatively-phrased belief at the same |confidence|
+# and relevance must tilt IDENTICALLY (direction-agnostic), never brighten/darken valence.
+pos = interpret(raw3, person(), recalled_beliefs=[bel(confidence=0.8, score=0.9)])
+neg = interpret(raw3, person(), recalled_beliefs=[bel(confidence=-0.8, score=0.9)])
+check("a positive and a negative belief at equal |confidence| tilt novelty identically",
+      abs(pos["novelty"] - neg["novelty"]) < 1e-9)
+check("a positive and a negative belief at equal |confidence| tilt self-relevance identically",
+      abs(pos["self_relevance"] - neg["self_relevance"]) < 1e-9)
+check("the belief tilt never touches valence or threat_challenge (no directional pull)",
+      pos["valence"] == base3["valence"] == neg["valence"]
+      and pos["threat_challenge"] == base3["threat_challenge"] == neg["threat_challenge"])
+
+# the belief lens surfaces in the brief (LLM) and the tag (UI) only when it matters
+check("lens brief mentions a settled view for a firm, relevant belief",
+      "settled view" in lens(person(), recalled_beliefs=[bel(confidence=0.9, score=0.9)]).lower())
+check("read_lens tag reflects a matching belief",
+      "believe" in read_lens(person(), recalled_beliefs=[bel(confidence=0.9, score=0.9)]).lower())
+check("a faint, shaky belief adds no brief or tag",
+      lens(person(), recalled_beliefs=[bel(confidence=0.05, score=0.2)]) == ""
+      and read_lens(person(), recalled_beliefs=[bel(confidence=0.05, score=0.2)]) == "")
+
 print("\n" + f"{sum(results)}/{len(results)} checks passed.")
 if sum(results) != len(results):
     raise SystemExit(1)

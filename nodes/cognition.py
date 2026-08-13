@@ -5,34 +5,42 @@ same way for everyone (``appraisal.appraise``); this node bends that reading by 
 character currently is AND by what they remember, so the SAME event forms two different
 people differently -- and lands differently on the same person depending on their past.
 
-  * ``interpret(appraisal, personality, recalled)`` -- tilts the appraisal vector twice:
+  * ``interpret(appraisal, personality, recalled, recalled_beliefs)`` -- tilts the
+    appraisal vector:
       - by current OCEAN traits (Slice 1): anxious -> more perceived threat and a darker
         valence; open -> more novelty; agreeable -> warmer on social events.
-      - by memory (Slice 2): recalled similar past episodes pull the valence and threat
-        *toward how those felt* (a learned expectation / schema), and the more this
+      - by EPISODIC memory (Slice 2): recalled similar past episodes pull the valence and
+        threat *toward how those felt* (a learned expectation / schema), and the more this
         resembles lived experience, the less novel it reads (familiarity damps novelty).
+      - by SEMANTIC memory: recalled beliefs damp novelty and raise self-relevance by how
+        firmly they're held -- "I already have a theory about this" reads as less
+        surprising and more personally relevant, regardless of whether the belief itself
+        is optimistic or grim (deliberately not a valence pull -- see ``_belief_tilt``).
     Deterministic; it colours the heuristic push (traits / values / moral all run through
     ``appraise -> impact``).
-  * ``lens(personality, recalled)`` -- the same two tilts as an interpretive brief injected
-    into the LLM push prompt, so the primary (Gemma) path is coloured too (it reads the raw
-    text, not the appraisal). ``read_lens`` is the short version for display.
+  * ``lens(personality, recalled, recalled_beliefs)`` -- the same tilts as an interpretive
+    brief injected into the LLM push prompt, so the primary (Gemma) path is coloured too
+    (it reads the raw text, not the appraisal). ``read_lens`` is the short version for
+    display.
 
-Both biases are small (``config.COGNITION_GAIN`` / ``config.MEMORY_GAIN``) and clamped, so
-perception is tinted, not overwhelmed. The memory pull is *toward a bounded target* (it
-asymptotes once the reading matches the remembered tone) and temperament's pull-back keeps
-the perceive -> form -> perceive loop stable, so the schema reinforces without running away.
+All biases are small (``config.COGNITION_GAIN`` / ``config.MEMORY_GAIN`` /
+``config.BELIEF_TILT_GAIN``) and clamped, so perception is tinted, not overwhelmed. The
+memory and belief pulls are *toward a bounded target* (each asymptotes once the reading
+matches it) and temperament's pull-back keeps the perceive -> form -> perceive loop
+stable, so the schema reinforces without running away.
 """
 
 from core.config import (
-    COGNITION_GAIN, MEMORY_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT, DRIVE_ACTIVE_THRESH,
-    BASIS, M, SELF_GAIN, SELF_ESTEEM_GAIN, SELF_ACTIVE_THRESH, SELF_INCONGRUENCE_THRESH,
-    SELF_OUGHT_GAIN, SELF_GAP_THRESH, BEHAV_EXPOSURE,
+    COGNITION_GAIN, MEMORY_GAIN, BELIEF_TILT_GAIN, DRIVE_GAIN, DRIVES, DRIVE_SAT,
+    DRIVE_ACTIVE_THRESH, BASIS, M, SELF_GAIN, SELF_ESTEEM_GAIN, SELF_ACTIVE_THRESH,
+    SELF_INCONGRUENCE_THRESH, SELF_OUGHT_GAIN, SELF_GAP_THRESH, BEHAV_EXPOSURE,
 )
 from core.impact import rule_pull
 from nodes.self_concept import ought_gap, aspiration_gap
 
 _THRESH = 0.25       # how far from neutral a trait must be to colour the lens
 _TONE_THRESH = 0.20  # how clearly the remembered tone must lean to surface a brief / tag
+_CONVICTION_THRESH = 0.30  # how firmly-held x relevant a recalled belief must be to surface
 
 
 def _clamp(value, low, high):
@@ -102,6 +110,46 @@ def _memory_tilt(out, recalled):
         out[dim] = _clamp(cur + g * f * (target - cur), -1.0, 1.0)
     # familiarity: the more this resembles lived experience, the less novel it reads
     out["novelty"] = _clamp(out.get("novelty", 0.0) * (1.0 - g * f), 0.0, 1.0)
+    return out
+
+
+# --- the belief lens (SEMANTIC memory): what they believe bends the reading ---
+def _belief_expectation(recalled_beliefs):
+    """Similarity-weighted expectation from the recalled beliefs, or ``None``.
+
+    Returns ``{familiarity, conviction}`` -- ``familiarity`` is the mean recall relevance
+    (how strongly this situation matches a belief the character holds) and ``conviction``
+    is the score-weighted mean of how firmly those beliefs are held (``|confidence|``).
+    Deliberately NO valence/direction here -- see ``_belief_tilt``.
+    """
+    if not recalled_beliefs:
+        return None
+    scores = [max(0.0, float(b.get("score", 0.0))) for b in recalled_beliefs]
+    total = sum(scores)
+    if total <= 0.0:
+        return None
+    conviction = sum(s * abs(float(b.get("confidence", 0.0)))
+                     for s, b in zip(scores, recalled_beliefs)) / total
+    return {"familiarity": total / len(scores), "conviction": conviction}
+
+
+def _belief_tilt(out, recalled_beliefs):
+    """A relevant, firmly-held belief damps novelty and raises self-relevance -- bounded,
+    multiplicative, the direction-agnostic counterpart to ``_memory_tilt``'s familiarity
+    damp. NOT a valence pull: ``confidence`` measures how strongly a proposition is held,
+    not whether its content is good or bad news -- "the world is dangerous" held at
+    confidence +0.9 is a strongly CONFIRMED belief with THREATENING content; reading its
+    sign as brightness would tilt exactly backwards. "This is already categorized" reads
+    as less surprising and more personally about you either way, which is the effect
+    modelled here; a directional version would need a second, separate signal (the belief
+    statement's own content polarity) and is deliberately out of scope."""
+    exp = _belief_expectation(recalled_beliefs)
+    if exp is None:
+        return out
+    g = BELIEF_TILT_GAIN
+    f, c = exp["familiarity"], exp["conviction"]
+    out["novelty"] = _clamp(out.get("novelty", 0.0) * (1.0 - g * f * c), 0.0, 1.0)
+    out["self_relevance"] = _clamp(out.get("self_relevance", 0.0) + g * f * c, 0.0, 1.0)
     return out
 
 
@@ -187,17 +235,22 @@ def _behavior_tilt(out, personality):
     return out
 
 
-def interpret(appraisal, personality, recalled=None):
+def interpret(appraisal, personality, recalled=None, recalled_beliefs=None):
     """Return a copy of ``appraisal`` bent by how engaged they are with the world, who they
-    are, what they remember, what they currently want, and who they think they are.
+    are, what they remember (lived and believed), what they currently want, and who they
+    think they are.
 
-    ``recalled`` is the list of similar past episodes (from ``memory.recall``) for this
-    experience; pass ``None`` / ``[]`` for the memory-free lens (offline-safe). The behavior,
-    drive, and self tilts read their ``personality`` keys and are no-ops when those are blank.
+    ``recalled`` is the list of similar past EPISODES (from ``memory.recall``);
+    ``recalled_beliefs`` is the list of relevant held BELIEFS (from
+    ``belief_memory.recall_beliefs``) -- pass ``None`` / ``[]`` for either to skip that
+    lens (offline-safe, and exactly today's behavior when belief recall isn't wired up).
+    The behavior, drive, and self tilts read their ``personality`` keys and are no-ops
+    when those are blank.
     """
     out = _behavior_tilt(dict(appraisal), personality)   # the door: how much gets in
     out = _trait_tilt(out, personality)
     out = _memory_tilt(out, recalled)
+    out = _belief_tilt(out, recalled_beliefs)
     out = _drive_tilt(out, personality)
     return _self_tilt(out, personality)
 
@@ -270,6 +323,25 @@ def _memory_tag(recalled):
     if exp["familiarity"] >= 0.5:
         return "this feels familiar"
     return ""
+
+
+def _belief_brief(recalled_beliefs):
+    """The belief lens as a sentence for the LLM push prompt (empty when nothing firmly
+    held and relevant surfaced). Deliberately doesn't say WHAT the belief is or which way
+    it leans -- only that the situation is one they already have a settled view on."""
+    exp = _belief_expectation(recalled_beliefs)
+    if exp is None or exp["familiarity"] * exp["conviction"] < _CONVICTION_THRESH:
+        return ""
+    return ("This is the kind of thing they already have a settled view on; it reads as "
+            "less of a surprise and more clearly about them because of it.")
+
+
+def _belief_tag(recalled_beliefs):
+    """The belief lens as a short display phrase (empty when nothing notable surfaced)."""
+    exp = _belief_expectation(recalled_beliefs)
+    if exp is None or exp["familiarity"] * exp["conviction"] < _CONVICTION_THRESH:
+        return ""
+    return "this matches something they believe"
 
 
 # the loudest active need, as words for the LLM prompt and the UI
@@ -372,22 +444,26 @@ def _behavior_brief(personality):
     return _BEHAVIOR_BRIEF.get(mode, "")
 
 
-def lens(personality, recalled=None):
+def lens(personality, recalled=None, recalled_beliefs=None):
     """A short interpretive brief for the LLM push prompt -- how this person tends to read events,
     from their carried stance, their strong traits, how similar past experiences felt, what they
-    currently want, and who they think they are. Empty when nothing tilts the reading."""
+    already believe about situations like this, what they currently want, and who they think they
+    are. Empty when nothing tilts the reading."""
     parts = [_behavior_brief(personality),
              _trait_brief(_lens_bits(personality)),
              _memory_brief(recalled),
+             _belief_brief(recalled_beliefs),
              _drive_brief(personality),
              _self_brief(personality)]
     return " ".join(p for p in parts if p)
 
 
-def read_lens(personality, recalled=None):
+def read_lens(personality, recalled=None, recalled_beliefs=None):
     """The cognitive lens as a short display phrase (for the UI). Empty when nothing tilts."""
     bits = _lens_bits(personality)
     tag = _memory_tag(recalled)
+    belief_tag = _belief_tag(recalled_beliefs)
     need = _active_need(personality)
-    extras = ([tag] if tag else []) + ([_DRIVE_TAG[need]] if need else []) + _self_bits(personality)
+    extras = (([tag] if tag else []) + ([belief_tag] if belief_tag else [])
+              + ([_DRIVE_TAG[need]] if need else []) + _self_bits(personality))
     return " · ".join(bits + extras)
