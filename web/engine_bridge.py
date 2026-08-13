@@ -577,7 +577,9 @@ def run_turn(name, message):
 
     # SELF-CONCEPT: self-regard responds to the interpreted experience (sociometer) and the
     # self-image drifts toward the just-formed traits (self-perception, resisting disconfirmation).
-    personality = apply_self_event(personality, appraisal, personality["traits"])
+    # A recognised pattern across the recalled episodes (a running reputation, not just this
+    # instant) adds a second, smaller esteem term -- see self_concept.apply_event.
+    personality = apply_self_event(personality, appraisal, personality["traits"], recalled=recalled)
 
     # BEHAVIOR: the world's answer trains the sensitivities (rewarded own action teaches
     # approach; threat trains inhibition; a carried lean-in is credited with how this

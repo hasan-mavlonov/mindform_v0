@@ -242,6 +242,13 @@ SCHEMA_LEARN = 0.08          # self-perception drift rate (self-image tracks the
 SCHEMA_RESIST = 0.35         # Swann: fraction of the drift rate kept when the move opposes the self-view
 ESTEEM_GAIN = 0.20           # how strongly one success/acceptance (or failure/rejection) moves self-regard
 ESTEEM_RELAX = 0.10          # per turn, self-regard relaxes toward its dispositional baseline
+# A sociometer tracks a running reputation, not one instant -- self_concept.apply_event's
+# second, smaller esteem term: a recognised PATTERN across recalled self-relevant episodes.
+# Deliberately light next to ESTEEM_GAIN: this turn's own experience should dominate, and
+# recalled episodes already colour appraisal itself via cognition._memory_tilt before this
+# ever runs -- this channel exists to add a direct pattern signal without double-counting
+# that path, not to duplicate it.
+SELF_PATTERN_GAIN = 0.05
 SELF_GAIN = 0.15             # self-consistency tilt: contradiction reads as threat, affirmation warms
 SELF_ESTEEM_GAIN = 0.10      # esteem buffer: high regard reads events as challenges, low as threats
 SELF_ACTIVE_THRESH = 0.25    # how strong esteem must be to surface a self tag in the lens
