@@ -24,8 +24,11 @@ def check(name, ok):
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
 
 
-def person(name="Tester"):
-    return {"identity": {"name": name}, "traits": {d: 0.0 for d in BASIS}}
+def person(name="Tester", turn=None):
+    p = {"identity": {"name": name}, "traits": {d: 0.0 for d in BASIS}}
+    if turn is not None:
+        p["experience_count"] = turn
+    return p
 
 
 tmp = tempfile.mkdtemp()
@@ -100,6 +103,37 @@ check("a vivid, slightly-less-similar memory outranks a flat, closer one",
       hits[0]["text"].startswith("I choked"))
 check("the displayed score stays the honest cosine, not the intensity-boosted one",
       abs(hits[0]["score"] - 0.9) < 1e-3)
+
+# --- recall: emotional memory, part two -- retrieval DECAY (never deletion) ------------
+DECAY = "Decay"
+M.create_memory("an old, unremarkable Tuesday.", [1.0, 0.0, 0.0, 0.0],
+                {"intensity": 0.0}, {}, person(turn=1), name=DECAY)     # stored turn 1
+M.create_memory("a fresh, equally unremarkable day.", [1.0, 0.0, 0.0, 0.0],
+                {"intensity": 0.0}, {}, person(turn=19), name=DECAY)    # stored turn 19, same cosine
+
+undecayed = M.recall([1.0, 0.0, 0.0, 0.0], name=DECAY, k=2)      # current_turn omitted -> no decay
+check("without current_turn, decay is off -- equally-similar memories score identically",
+      len(undecayed) == 2 and abs(undecayed[0]["score"] - undecayed[1]["score"]) < 1e-9)
+
+decayed = M.recall([1.0, 0.0, 0.0, 0.0], name=DECAY, k=2, current_turn=20)
+check("at equal similarity, a fresh memory outranks a stale one once decay is asked for",
+      decayed[0]["text"].startswith("a fresh"))
+check("decay never touches the displayed score -- still the honest, undecayed cosine",
+      abs(decayed[0]["score"] - 1.0) < 1e-9 and abs(decayed[1]["score"] - 1.0) < 1e-9)
+
+# _decay_factor in isolation: the bounded arithmetic, independent of recall's ranking
+old_flat = {"turn": 1, "appraisal": {"intensity": 0.0}}
+old_vivid = {"turn": 1, "appraisal": {"intensity": 1.0}}
+legacy_no_stamp = {"appraisal": {"intensity": 0.0}}                # predates the "turn" field
+check("no current_turn -> no decay (factor 1.0)", M._decay_factor(old_flat, None) == 1.0)
+check("no turn stamp on the record -> no decay (factor 1.0)",
+      M._decay_factor(legacy_no_stamp, 1000) == 1.0)
+check("a fresh memory (age 0) has no decay yet",
+      M._decay_factor({"turn": 20, "appraisal": {}}, 20) == 1.0)
+check("at the same age, a vivid memory decays less than a flat one (flashbulb protection)",
+      M._decay_factor(old_vivid, 101) > M._decay_factor(old_flat, 101))
+check("decay is bounded -- never below the floor, even at extreme age",
+      M._decay_factor(old_flat, 10 ** 6) >= 0.35 - 1e-9)
 
 # --- create_memory: the log and its embedding row cannot be torn apart by concurrency --
 import threading
