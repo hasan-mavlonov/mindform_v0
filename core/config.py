@@ -417,7 +417,20 @@ def parse_json_object(text):
         return json.loads(match.group(0))
 
 # --- Memory / recurrence ---
-RECURRENCE_THRESHOLD = 0.80   # cosine similarity to count as the "same" experience
+# Recalibrated from MiniLM cosines measured on real paraphrases of the same recurring life
+# pattern reworded turn to turn (0.42-0.88: "I danced at a party" / "went to another party
+# and danced again") against genuinely different experiences (0.06-0.32): 0.80 asked for a
+# near-verbatim retelling, so recurrence -- and habit formation, which is gated on it --
+# almost never fired on naturally reworded input (a live run: the same three recurring
+# situations, retold across five turns, scored 0 recurrence every time). 0.40 sits in the
+# empirical gap between the two distributions, with margin on both sides.
+RECURRENCE_THRESHOLD = 0.40   # cosine similarity to count as "the same kind of experience"
+# Emotional memory: a vivid past episode should come to mind ahead of a flat one at the same
+# topical similarity (a searing memory outranks a mundane one). Multiplicative on the raw
+# cosine and applied INSIDE the relevance floor (core.memory.recall), so it can only break
+# ties among what min_score already judged related -- it cannot surface an unrelated memory.
+# drives.recall_bias re-ranks this same pool again, on top, by what is currently NEEDED.
+INTENSITY_RECALL_GAIN = 0.50  # how strongly a memory's own intensity re-ranks recall (0 = off)
 
 # --- Temperament (genesis baseline + dynamics) ---
 # A character is born (temperament.genesis) with a per-trait OCEAN baseline `mu`

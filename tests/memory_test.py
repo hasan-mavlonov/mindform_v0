@@ -84,6 +84,43 @@ check("recall drops irrelevant memories (below min_score)",
       M.recall([0.0, 0.0, 1.0, 0.0], name=RC, k=3) == [])
 check("recall on empty history is []", M.recall([1.0, 0.0, 0.0, 0.0], name="Nobody") == [])
 
+# --- recall: emotional memory -- a vivid memory can outrank a flatter, closer one ------
+VIVID = "Vivid"
+M.create_memory("I aced the presentation everyone was watching.", [1.0, 0.0, 0.0, 0.0],
+                {"intensity": 0.0}, {}, person(), name=VIVID)          # closest, flat
+M.create_memory("I choked in front of everyone and it still haunts me.", [0.9, 0.436, 0.0, 0.0],
+                {"intensity": 1.0}, {}, person(), name=VIVID)          # a bit further, searing
+M.create_memory("I mentioned it in passing once.", [0.3, 1.0, 0.0, 0.0],
+                {"intensity": 1.0}, {}, person(), name=VIVID)          # vivid but below the floor
+
+hits = M.recall([1.0, 0.0, 0.0, 0.0], name=VIVID, k=3, min_score=0.5)
+check("intensity cannot surface a memory the cosine floor rejects",
+      all("mentioned it in passing" not in h["text"] for h in hits))
+check("a vivid, slightly-less-similar memory outranks a flat, closer one",
+      hits[0]["text"].startswith("I choked"))
+check("the displayed score stays the honest cosine, not the intensity-boosted one",
+      abs(hits[0]["score"] - 0.9) < 1e-3)
+
+# --- create_memory: the log and its embedding row cannot be torn apart by concurrency --
+import threading
+CONC, N = "Concurrent", 24
+vectors = [[1.0 if j == i else 0.0 for j in range(N)] for i in range(N)]
+threads = [threading.Thread(target=M.create_memory,
+                            args=(f"memory {i}", vectors[i], {}, {}, person()),
+                            kwargs={"name": CONC}) for i in range(N)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+conc_log = json.load(open(M._memory_path(CONC)))
+conc_emb = M.load_embeddings(CONC)
+check("concurrent writes: log and sidecar stay the same length",
+      len(conc_log) == N and conc_emb.shape[0] == N)
+by_text = {m["text"]: i for i, m in enumerate(conc_log)}
+check("concurrent writes: every sidecar row still matches its own log record",
+      all(by_text[f"memory {i}"] < conc_emb.shape[0]
+          and list(conc_emb[by_text[f"memory {i}"]]) == vectors[i] for i in range(N)))
+
 import shutil
 shutil.rmtree(tmp, ignore_errors=True)
 
