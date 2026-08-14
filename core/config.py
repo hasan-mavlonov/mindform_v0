@@ -242,6 +242,13 @@ SCHEMA_LEARN = 0.08          # self-perception drift rate (self-image tracks the
 SCHEMA_RESIST = 0.35         # Swann: fraction of the drift rate kept when the move opposes the self-view
 ESTEEM_GAIN = 0.20           # how strongly one success/acceptance (or failure/rejection) moves self-regard
 ESTEEM_RELAX = 0.10          # per turn, self-regard relaxes toward its dispositional baseline
+# A sociometer tracks a running reputation, not one instant -- self_concept.apply_event's
+# second, smaller esteem term: a recognised PATTERN across recalled self-relevant episodes.
+# Deliberately light next to ESTEEM_GAIN: this turn's own experience should dominate, and
+# recalled episodes already colour appraisal itself via cognition._memory_tilt before this
+# ever runs -- this channel exists to add a direct pattern signal without double-counting
+# that path, not to duplicate it.
+SELF_PATTERN_GAIN = 0.05
 SELF_GAIN = 0.15             # self-consistency tilt: contradiction reads as threat, affirmation warms
 SELF_ESTEEM_GAIN = 0.10      # esteem buffer: high regard reads events as challenges, low as threats
 SELF_ACTIVE_THRESH = 0.25    # how strong esteem must be to surface a self tag in the lens
@@ -298,6 +305,15 @@ STYLE_LEARN = 0.20           # how strongly one reception entrenches/extinguishe
 # How many similar past experiences (memory recurrence, RECURRENCE_THRESHOLD) it takes
 # for a recurring experience to count as a habit.
 HABIT_MIN_RECURRENCE = 3
+# PROCEDURAL memory (behavior.apply_event): once a situation is a recognized habit (the
+# SAME gate as above -- one source of truth, not a second competing threshold), the
+# carried action-readiness leans harder on itself and less on this turn's fresh reading --
+# automaticity, a well-worn response gets re-deliberated less each time. Layered on top of
+# cognition._memory_tilt (which already makes a recurring situation's APPRAISAL read as
+# more expected), so this is kept modest -- it covers the remaining action-readiness
+# rigidity, not the whole effect.
+HABIT_INERTIA_GAIN = 0.4     # a recognized habit's blend loses up to 40% of its
+                              # responsiveness to the fresh reading
 
 # --- Character: Belief (an open, propositional store formed by experience) ---
 # Unlike the fixed values / moral vectors, beliefs are open-ended propositions the
@@ -310,6 +326,17 @@ HABIT_MIN_RECURRENCE = 3
 # character["beliefs_reviewed"] watermark).
 BELIEF_SIM_THRESHOLD = 0.62   # cosine over belief statements to count as "the same belief"
 BELIEF_BACKLOG_CAP = 10       # max unreviewed memories turned into beliefs per turn
+# SEMANTIC memory made recallable (core/belief_memory.py): beliefs are formed every turn
+# but were, until now, never read back -- a write-only sink. min_score is a floor on the
+# raw experience-text -vs- belief-statement cosine (core.belief_memory.recall_beliefs).
+BELIEF_MIN_SCORE = 0.20       # UNCALIBRATED -- an experience-text/belief-statement cosine
+                               # is a different genre pairing than RECURRENCE_THRESHOLD's
+                               # (which was measured against real MiniLM cosines on same-
+                               # kind-of-experience retellings); revisit if real usage shows
+                               # this too loose or too tight
+BELIEF_RECALL_GAIN = 0.40     # mirrors INTENSITY_RECALL_GAIN: reweights belief recall by
+                               # how firmly the belief is held (|confidence|), inside the
+                               # min_score floor -- it can break ties, never grant relevance
 
 # --- LLM (OpenAI-compatible): default Gemini 3.5 Flash via the Gemini API ---
 # llm_impact.py asks an OpenAI-compatible chat model for a signed OCEAN delta in
@@ -481,6 +508,17 @@ COGNITION_GAIN = 0.15
 # so it can't run away -- and is scaled by how closely the situation is recognised, so a
 # faint match barely tints.
 MEMORY_GAIN = 0.20
+# SEMANTIC memory -- the belief-driven tilt (cognition._belief_tilt): a recalled belief
+# damps novelty and raises self-relevance in proportion to how strongly it's held and how
+# relevant it is -- "this is already categorized" reads as less surprising and more
+# personally about you, REGARDLESS of whether the belief itself is optimistic or grim.
+# Deliberately NOT a valence pull: confidence measures how firmly a proposition is held,
+# not whether its content is good or bad news ("the world is dangerous" held at confidence
+# +0.9 is a strongly-confirmed belief with threatening content -- reading its sign as
+# brightness would be exactly backwards). A directional version would need a second signal
+# (the statement's own content polarity), deferred as a separate, bigger decision. Lighter
+# than MEMORY_GAIN since it compounds with memory's own novelty damp on the same dimension.
+BELIEF_TILT_GAIN = 0.15
 
 # --- Identity (immutable facts collected when a character is created) ---
 # (field_key, prompt_label), in the order the creation form asks for them. These

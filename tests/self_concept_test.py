@@ -91,6 +91,55 @@ check("self-esteem relaxes up toward a higher baseline",
       sc.refresh(p_lo)["self"]["esteem"] > -0.9)
 
 
+# --- PATTERN: esteem also reads a recognised pattern across recalled episodes --------
+def mem(outcome=0.0, agency=0.0, social=0.0, valence=0.0, self_relevance=0.5, score=0.8):
+    """A recalled episode in the slim shape memory.recall returns (appraisal + score)."""
+    return {"appraisal": {"outcome": outcome, "agency": agency, "social": social,
+                          "valence": valence, "self_relevance": self_relevance}, "score": score}
+
+
+neutral_evt = {"outcome": 0.0, "agency": 0.0, "social": 0.0, "valence": 0.0, "self_relevance": 0.0}
+base_esteem = sc.apply_event(person(esteem=0.0), neutral_evt, person()["traits"])["self"]["esteem"]
+
+success_pattern = [mem(outcome=0.8, agency=0.6, social=0.5, valence=0.7, score=0.9),
+                   mem(outcome=0.7, agency=0.5, social=0.4, valence=0.6, score=0.8)]
+failure_pattern = [mem(outcome=-0.8, agency=-0.5, social=-0.4, valence=-0.7, score=0.9),
+                   mem(outcome=-0.7, agency=-0.5, social=-0.4, valence=-0.6, score=0.8)]
+
+with_success = sc.apply_event(person(esteem=0.0), neutral_evt, person()["traits"],
+                              recalled=success_pattern)["self"]["esteem"]
+with_failure = sc.apply_event(person(esteem=0.0), neutral_evt, person()["traits"],
+                              recalled=failure_pattern)["self"]["esteem"]
+check("a recognised success pattern raises esteem beyond this turn's own (neutral) reading",
+      with_success > base_esteem)
+check("a recognised failure pattern lowers esteem beyond this turn's own (neutral) reading",
+      with_failure < base_esteem)
+
+# same event, only self_relevance differs -- an irrelevant pattern should move esteem less
+strong_relevant = [mem(outcome=0.8, agency=0.6, social=0.5, valence=0.7, self_relevance=0.8, score=0.9)]
+strong_irrelevant = [mem(outcome=0.8, agency=0.6, social=0.5, valence=0.7, self_relevance=0.0, score=0.9)]
+with_relevant = sc.apply_event(person(esteem=0.0), neutral_evt, person()["traits"],
+                               recalled=strong_relevant)["self"]["esteem"]
+with_irrelevant = sc.apply_event(person(esteem=0.0), neutral_evt, person()["traits"],
+                                 recalled=strong_irrelevant)["self"]["esteem"]
+check("a near-zero-self-relevance recalled pattern moves esteem less than a self-relevant one",
+      abs(with_irrelevant - base_esteem) < abs(with_relevant - base_esteem))
+
+# the default -- no recalled argument at all -- reproduces the original single-term update
+check("apply_event's default reproduces the original update exactly (a true no-op default)",
+      sc.apply_event(person(esteem=0.2), success, person()["traits"])
+      == sc.apply_event(person(esteem=0.2), success, person()["traits"], recalled=None)
+      == sc.apply_event(person(esteem=0.2), success, person()["traits"], recalled=[]))
+
+# stays bounded under sustained bombardment even with a recalled pattern reinforcing it
+p_pat = person(esteem=0.0)
+for _ in range(20):
+    p_pat = sc.refresh(p_pat)
+    p_pat = sc.apply_event(p_pat, success, p_pat["traits"], recalled=success_pattern)
+check("esteem stays bounded under sustained bombardment with a recalled pattern present",
+      -1.0 <= p_pat["self"]["esteem"] <= 1.0)
+
+
 # --- SELF-IMAGE: Bem drift with Swann resistance -------------------------------
 neutral = {"outcome": 0.0, "agency": 0.0, "social": 0.0, "valence": 0.0, "self_relevance": 0.0}
 # Bem: with the actual trait fixed, the self-image converges toward it over turns

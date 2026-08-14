@@ -21,20 +21,28 @@ text -> REFRESH the carried state (each x <- x + rate*(set_point - x)):
           behavior    sensitivities relax toward trait-anchored set-points
           expression  the formed manner relaxes toward what the inner state calls for
 
-     -> RECALL (memory.py; needs numpy + encoder, skipped cleanly without):
-          cosine top-k over the embedding sidecar, then MOTIVATED RETRIEVAL --
-          the active needs re-rank the pool (drives.recall_bias): what you lack
-          shapes what you remember
+     -> RECALL, two memories (both need numpy + encoder, skipped cleanly without):
+          EPISODIC (memory.py)   cosine top-k over the embedding sidecar, ranked by
+                                 similarity x how VIVID (intensity) x how RECENT (bounded
+                                 decay, never forgotten -- just less readily retrieved),
+                                 then MOTIVATED RETRIEVAL re-ranks the pool by the active
+                                 needs (drives.recall_bias): what you lack shapes what
+                                 comes to mind
+          SEMANTIC (belief_memory.py)   cosine top-k over the belief-embedding sidecar,
+                                 ranked by similarity x how firmly the belief is HELD
 
      -> APPRAISE (perception): llm_appraisal.appraise_from_text
           LLM 8-dim appraisal [primary] -> trained head -> lexicon   [fallback chain]
           every LLM-labelled reading is logged as training data (appraisal_log) --
           the offline head learns from the online model with use (distillation)
 
-     -> INTERPRET (cognition.interpret) -- the lens, five tilts in order:
+     -> INTERPRET (cognition.interpret) -- the lens, six tilts in order:
           behavior gate   the carried stance scales INTENSITY (lean in = life lands harder)
           trait tilt      anxious -> more threat, darker valence; open -> more novelty
           memory tilt     recalled episodes pull valence/threat toward how they felt
+          belief tilt     a recalled, firmly-held belief damps novelty and raises self-
+                          relevance -- "I already have a theory about this" -- regardless
+                          of whether the belief itself is optimistic or grim
           drive tilt      events bearing on loud needs read more relevant/warm/threatening
           self tilt       self-discrepant events read as threat; esteem buffers; the
                           ought-gap adds vigilance (agitation)
@@ -126,8 +134,8 @@ python console.py                        # the cockpit at http://localhost:8000 
 cp .env.example .env                     # set GEMINI_API_KEY for the LLM-primary path (optional)
 pip install -r requirements.txt          # optional: encoder + memory/recall (numpy, sentence-transformers)
 
-for t in acceptance cognition character genesis drives self_concept expression memory behavior appraisal_distill; \
-  do python tests/${t}_test.py; done     # ten suites; all but memory are dependency-free
+for t in acceptance cognition character genesis drives self_concept expression memory belief_memory behavior appraisal_distill; \
+  do python tests/${t}_test.py; done     # eleven suites; all but memory/belief_memory are dependency-free
 
 python bootstrap/distill_appraisal_corpus.py 1000   # manufacture appraisal training data (needs key)
 python bootstrap/train_appraisal_head.py            # train the offline head (needs torch)
@@ -137,11 +145,11 @@ python interactive.py                    # terminal shell; genesis.py / simulati
 ## Layout
 ```
 core/    shared kernel: config (all knobs + priors), llm, encoder, appraisal (+_head, _log),
-         impact, updater, memory, personality
+         impact, updater, memory, belief_memory, personality
 nodes/   the faculties: temperament, llm_impact, llm_appraisal, cognition, character,
          values, moral, beliefs, drives, self_concept, expression, behavior
 web/     the cockpit:   server (stdlib), engine_bridge (run_turn + snapshot), reply, static/
-tests/   ten behaviour suites, dependency-free by default
+tests/   eleven behaviour suites, dependency-free by default
 root     entry scripts: console.py, interactive.py, simulation.py, genesis.py
 ```
 Modules import across packages by path (`from core.config import ...`); entry scripts stay

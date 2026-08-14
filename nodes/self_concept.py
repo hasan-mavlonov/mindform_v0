@@ -36,7 +36,7 @@ turn. Pure arithmetic (no LLM, no numpy) -- it degrades exactly like every other
 
 from core.config import (
     BASIS, BASIS_NAMES, M, SELF_BASE, SCHEMA_LEARN, SCHEMA_RESIST, ESTEEM_GAIN, ESTEEM_RELAX,
-    SELF_IDEAL_M, SELF_OUGHT_M, SELF_GAP_SLOPE,
+    SELF_IDEAL_M, SELF_OUGHT_M, SELF_GAP_SLOPE, SELF_PATTERN_GAIN,
 )
 from core.impact import rule_pull
 from nodes.drives import satisfaction as drive_satisfaction
@@ -132,13 +132,39 @@ def _self_evaluation(appraisal):
     return _clamp(raw * gate)
 
 
-def apply_event(personality, appraisal, traits):
+def _pattern_evaluation(recalled):
+    """A sociometer reading over the RECALLED episodes, not just this instant -- the same
+    signal as ``_self_evaluation``, applied to each remembered appraisal and averaged,
+    weighted by how strongly each one was recognised (its recall ``score``). A real
+    sociometer tracks a running reputation, not a single data point; this is that pattern.
+    ``None`` / no recall / no total relevance -> 0.0 (no pattern, no effect -- offline-safe,
+    and the case for every call site before this existed)."""
+    if not recalled:
+        return 0.0
+    scores = [max(0.0, float(m.get("score", 0.0))) for m in recalled]
+    total = sum(scores)
+    if total <= 0.0:
+        return 0.0
+    return sum(s * _self_evaluation(m.get("appraisal") or {}) for s, m in zip(scores, recalled)) / total
+
+
+def apply_event(personality, appraisal, traits, recalled=None):
     """AFTER formation: move self-esteem by the sociometer signal (diminishing returns), and
     drift the self-image toward the just-formed ``traits`` (Bem), resisting moves that oppose the
-    current self-view (Swann). ``traits`` are the POST-update traits. Returns a new personality."""
+    current self-view (Swann). ``traits`` are the POST-update traits. Returns a new personality.
+
+    ``recalled`` (the same episodic recall list ``cognition._memory_tilt`` reads, optional)
+    adds a second, smaller esteem term: a recognised PATTERN across past self-relevant
+    episodes, not just this turn's reading (``SELF_PATTERN_GAIN``, deliberately light --
+    recalled episodes already colour ``appraisal`` itself via ``cognition._memory_tilt``
+    before this ever runs, so this channel adds a direct pattern signal without
+    double-counting that path). ``None`` (the default) reproduces the original single-term
+    update exactly.
+    """
     self_state = personality.get("self") or default_self(personality)
     e = float(self_state.get("esteem", 0.0))
     e = _clamp(e + ESTEEM_GAIN * _self_evaluation(appraisal) * (1.0 - abs(e)))
+    e = _clamp(e + SELF_PATTERN_GAIN * _pattern_evaluation(recalled) * (1.0 - abs(e)))
 
     img = _image(self_state)
     new_img = {}
