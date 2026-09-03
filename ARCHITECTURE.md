@@ -140,6 +140,10 @@ for t in acceptance cognition character genesis drives self_concept expression m
 python bootstrap/distill_appraisal_corpus.py 1000   # manufacture appraisal training data (needs key)
 python bootstrap/train_appraisal_head.py            # train the offline head (needs torch)
 python interactive.py                    # terminal shell; genesis.py / simulation.py: CLI entry points
+
+python bench/personality_bench.py "Aisha, a shy, anxious poet." --reinforce E
+                                          # BFI-44 persistence/responsiveness benchmark (needs key,
+                                          # online-only) -- see bench/README.md
 ```
 
 ## Layout
