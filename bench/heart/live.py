@@ -537,21 +537,36 @@ let PICKED=new Set(["mindform_d2"]), MODE="quick", CHARSEL="CHAR_01";
 function pick(a,on){ on?PICKED.add(a):PICKED.delete(a); }
 
 async function setup(){ SETUP=await (await fetch("/api/setup")).json(); }
+let LAST_STATE_JSON=null;
 async function poll(){
-  try{ STATE=await (await fetch("/api/state",{cache:"no-store"})).json(); render(); }catch(e){}
+  try{
+    const j=await (await fetch("/api/state",{cache:"no-store"})).json();
+    const s=JSON.stringify(j);
+    // innerHTML replacement destroys every child node, including a native
+    // <select> mid-dropdown -- that's what was slamming the controls shut.
+    // Re-render only when the server actually reports something new.
+    if(s===LAST_STATE_JSON) return;
+    LAST_STATE_JSON=s; STATE=j; render();
+  }catch(e){}
 }
 async function start(){
   const mode=document.getElementById("mode").value;
   const character=document.getElementById("char").value;
   const arms=[...document.querySelectorAll(".arm:checked")].map(e=>e.value);
   if(!arms.length){ alert("Pick at least one system to test."); return; }
+  const c=SETUP.characters.find(x=>x.character===character);
   if(mode==="full"){
-    const c=SETUP.characters.find(x=>x.character===character);
     if(!confirm(`Full Protocol Benchmark for ${character}\n\nThis forms the character `
       +`from all ${c.total_memories} memories before answering. Measured rate is ~33 s `
       +`per memory, so expect roughly ${(c.total_memories*33/3600).toFixed(1)} hours `
       +`before the first question.\n\nStart?`)) return;
+  } else if(!c.prepared){
+    alert(`${character} has no prepared snapshot yet, so Quick Test and Character Test `
+      +`have nothing to answer from.\n\nRun a Full Protocol Benchmark for this character `
+      +`first (forms it from its memories), or pick a character that's already prepared.`);
+    return;
   }
+  LAST_STATE_JSON=null;   // force the next poll to render, even if state looks unchanged
   const r=await fetch("/api/start",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({mode,character,arms})});
   if(!r.ok){ const j=await r.json(); alert(j.message); }
