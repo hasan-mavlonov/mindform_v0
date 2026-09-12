@@ -111,11 +111,28 @@ def question_query(scenario):
     ] if x)
 
 
-def run_question(log, arm, char, char_pub, scenario, question, name, run_dir,
-                 frozen_id, idx, total, tallies, forbidden, repeat=0):
-    """One (arm, question) cell, with integrity checks around it."""
+def execute_question(log, arm, char, char_pub, scenario, question, name, run_dir,
+                     frozen_id, forbidden, repeat=0, snapshot_label="frozen",
+                     on_stage=None):
+    """Restore -> retrieve -> build -> leak-check -> answer -> COMMIT.
+
+    Returns the committed record. The ground truth is deliberately NOT read
+    here: reveal-after-commit is enforced by this function simply never
+    touching the answer key. ``grade_question`` does that, after the caller has
+    written this record.
+
+    Both the CLI runner and the live UI go through this one function, so the
+    integrity guarantees cannot drift apart between the two front ends.
+    ``on_stage`` is an optional callback (stage_name, payload) for a UI that
+    wants to show progress mid-question.
+    """
+    def stage(name_, **payload):
+        if on_stage:
+            on_stage(name_, payload)
+
     # 1. restore the frozen state; nothing from a previous question may survive
-    restored = mfadapter.restore(name, run_dir, "frozen")
+    stage("restoring")
+    restored = mfadapter.restore(name, run_dir, snapshot_label)
     if restored != frozen_id:
         raise RunInvalid(f"restore mismatch: {restored[:16]} != {frozen_id[:16]}")
     hash_before, _ = mfadapter.snapshot_hash(name)
@@ -123,6 +140,7 @@ def run_question(log, arm, char, char_pub, scenario, question, name, run_dir,
     options = heartdata.public_options(question)
     arms.assert_no_forbidden_fields(options)
 
+    stage("retrieving")
     query = question_query(scenario)
     memories, retr_meta = retrieve_for(arm, name, query, TOP_K)
 
@@ -136,14 +154,11 @@ def run_question(log, arm, char, char_pub, scenario, question, name, run_dir,
                   detail=detail, prompt_sha256=arms.prompt_sha(prompt))
         raise RunInvalid(f"LEAK in prompt for {question['question_id']} [{arm}]: {detail}")
 
-    log.question_header(ARM_LABEL[arm], char["id"], idx, total, scenario,
-                        scenario.get("trigger_event"), options)
-    log.retrieval_block(memories, retr_meta["embedder"])
-    log.state_block(state)
+    stage("answering", options=options, memories=memories, state=state,
+          retrieval=retr_meta)
 
     # 3. answer, then COMMIT before the truth is touched
     result = arms.answer(prompt)
-    log.commit(result["choice"])
 
     committed = {
         "arm": arm, "character_id": char["id"], "snapshot_id": frozen_id,
@@ -171,34 +186,63 @@ def run_question(log, arm, char, char_pub, scenario, question, name, run_dir,
         "errors": result["errors"],
     }
     log.event("answer_committed", **committed)
+    return committed
 
-    # 4. only now may the answer key be read
-    truth = heartdata.ground_truth(question)
-    correct = (result["choice"] == truth)
 
+def grade_question(log, committed, question, name, tallies):
+    """Reveal the answer key and grade. Only ever called AFTER execute_question
+    has written its record, so the key cannot influence the answer."""
+    arm = committed["arm"]
+    truth = heartdata.ground_truth(question)          # first touch of the key
+    correct = (committed["selected_answer"] == truth)
+
+    hash_before = committed["snapshot_hash_before"]
     hash_after, _ = mfadapter.snapshot_hash(name)
     mutated = (hash_after != hash_before)
 
     c, n = tallies.get(arm, (0, 0))
     tallies[arm] = (c + (1 if correct else 0), n + 1)
 
-    log.event("graded", arm=arm, question_id=question["question_id"], repeat=repeat,
-              selected_answer=result["choice"], ground_truth=truth, correct=correct,
-              snapshot_hash_before=hash_before, snapshot_hash_after=hash_after,
-              state_mutated=mutated, leak_check_ok=True,
-              input_tokens=result["input_tokens"], output_tokens=result["output_tokens"],
-              cost_usd=result["cost_usd"], latency_ms=result["latency_ms"])
+    log.event("graded", arm=arm, question_id=committed["question_id"],
+              repeat=committed.get("repeat", 0),
+              selected_answer=committed["selected_answer"], ground_truth=truth,
+              correct=correct, snapshot_hash_before=hash_before,
+              snapshot_hash_after=hash_after, state_mutated=mutated, leak_check_ok=True,
+              input_tokens=committed["input_tokens"],
+              output_tokens=committed["output_tokens"],
+              cost_usd=committed["cost_usd"], latency_ms=committed["latency_ms"])
+    return {"ground_truth": truth, "correct": correct, "state_mutated": mutated,
+            "snapshot_hash_after": hash_after}
 
-    log.reveal(truth, correct, {ARM_LABEL[a]: tallies[a] for a in tallies},
-               result["latency_ms"],
-               {"input_tokens": result["input_tokens"],
-                "output_tokens": result["output_tokens"]},
-               result["cost_usd"])
-    log.integrity(hash_before, hash_after, mutated, True)
 
-    if mutated:
+def run_question(log, arm, char, char_pub, scenario, question, name, run_dir,
+                 frozen_id, idx, total, tallies, forbidden, repeat=0):
+    """CLI wrapper: the shared path plus console output."""
+    def stage(kind, payload):
+        if kind == "answering":
+            log.question_header(ARM_LABEL[arm], char["id"], idx, total, scenario,
+                                scenario.get("trigger_event"), payload["options"])
+            log.retrieval_block(payload["memories"], payload["retrieval"]["embedder"])
+            log.state_block(payload["state"])
+
+    committed = execute_question(log, arm, char, char_pub, scenario, question, name,
+                                 run_dir, frozen_id, forbidden, repeat=repeat,
+                                 on_stage=stage)
+    log.commit(committed["selected_answer"])
+
+    g = grade_question(log, committed, question, name, tallies)
+
+    log.reveal(g["ground_truth"], g["correct"], {ARM_LABEL[a]: tallies[a] for a in tallies},
+               committed["latency_ms"],
+               {"input_tokens": committed["input_tokens"],
+                "output_tokens": committed["output_tokens"]},
+               committed["cost_usd"])
+    log.integrity(committed["snapshot_hash_before"], g["snapshot_hash_after"],
+                  g["state_mutated"], True)
+
+    if g["state_mutated"]:
         raise RunInvalid(f"state mutated while answering {question['question_id']} [{arm}]")
-    return correct
+    return g["correct"]
 
 
 # --------------------------------------------------------------------------

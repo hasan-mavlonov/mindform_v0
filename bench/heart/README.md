@@ -48,7 +48,39 @@ parenthetical encodes trait + direction), other characters' ids, `correct_answer
 `activated_memories_*`. Exposed, matching HEART's own `build_basic_info`:
 character **id** and **occupation** only.
 
-## Running
+## Running it as a live benchmark (start here)
+
+```bash
+python -m bench.heart.live          # then open http://127.0.0.1:8500
+```
+
+Pick a mode, pick a character, pick which systems to test, click **Run
+Benchmark**, and watch it go question by question: scenario, the four options,
+the answer as it commits, then the official ground truth revealed after that,
+then the running score. Click any row in the history to expand it (retrieved
+memories, the state injected into D2, the raw model output); tick **Debug** to
+include the exact prompt.
+
+| Mode | What it does | Tier |
+|---|---|---|
+| **Quick Test** | ~20 official MCQs against an already-prepared snapshot | Development |
+| **Character Test** | every official MCQ for one character, same snapshot | Development |
+| **Full Protocol Benchmark** | forms the character from all 1,000 memories, then runs every question | Full protocol |
+
+**The tier label is not decoration.** A run against a 50-memory snapshot uses
+official questions and official scoring, but the character was formed from 5% of
+its memories — it is a development test and the UI says so on every screen and in
+the export. Only a run whose snapshot has the full memory set is labelled
+FULL PROTOCOL BENCHMARK. At the measured ~33 s/memory that preparation is roughly
+9 hours per character, which is why it is a separate, explicitly-confirmed mode.
+
+The UI is a front end, not a second implementation: it calls
+`runner.execute_question` and `runner.grade_question`, the same two functions the
+CLI uses, so snapshot restore-and-rehash, the pre-send leak check and
+reveal-after-commit behave identically. Every run still writes a full
+`events.jsonl`.
+
+## Running from the CLI
 
 ```bash
 python -m bench.heart.runner --stage 0                 # 50 memories, 3 questions
