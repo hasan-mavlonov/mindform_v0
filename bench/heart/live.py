@@ -39,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from bench.heart import arms, heartdata, mfadapter, runner, snapshots
 from bench.heart.config import (
     RESULTS_ROOT, MODEL, TEMPERATURE, MAX_TOKENS, TOP_K, REASONING_EFFORT,
+    require_heart_bench,
 )
 from bench.heart.logbook import Logbook, new_run_id
 
@@ -800,6 +801,7 @@ def main():
     ap.add_argument("--port", type=int, default=8500)
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
+    require_heart_bench()
 
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}/"

@@ -31,7 +31,7 @@ import time
 
 from core.config import BASIS, BASIS_NAMES
 from bench.heart import heartdata, mfadapter
-from bench.heart.config import RESULTS_ROOT
+from bench.heart.config import RESULTS_ROOT, require_heart_bench
 from bench.heart.logbook import Logbook, new_run_id
 
 CONFIGS = [
@@ -92,6 +92,7 @@ def main():
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--no-resume", action="store_true")
     args = ap.parse_args()
+    require_heart_bench()
 
     run_id = args.run_id or new_run_id("formcompare")
     log = Logbook(run_id, RESULTS_ROOT)
