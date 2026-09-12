@@ -79,21 +79,47 @@ def best_for(character_id):
     return (discover().get(character_id) or [None])[0]
 
 
+def best_for_tier(character_id, tier):
+    """The deepest snapshot in one tier ("dev" = <1000 memories, "full" = >=1000).
+
+    A character can have snapshots in both tiers at once (a 50-memory dev run
+    and, later, a full 1000-memory one) -- they are never the same snapshot, so
+    picking one must never silently fall back to the other.
+    """
+    snaps = discover().get(character_id) or []
+    if tier == "full":
+        pool = [s for s in snaps if s["full_protocol"]]
+    else:
+        pool = [s for s in snaps if not s["full_protocol"]]
+    return pool[0] if pool else None  # discover() already sorts deepest-first
+
+
 def catalogue():
-    """Every HEART character with its preparation status, for the UI."""
+    """Every HEART character with its preparation status, for the UI.
+
+    Reports the dev and full tiers separately -- a 50-memory dev snapshot and
+    a "not yet prepared" full one are never collapsed into a single "prepared"
+    flag, so the UI can never present a partial-memory run as the full one.
+    """
     prepared = discover()
     out = []
     for cid, char in sorted(heartdata.load_characters().items()):
         snaps = prepared.get(cid) or []
-        best = snaps[0] if snaps else None
+        dev = next((s for s in snaps if not s["full_protocol"]), None)
+        full = next((s for s in snaps if s["full_protocol"]), None)
+        best = full or dev
         out.append({
             "character": cid,
             "occupation": char.get("occupation"),
             "questions": len(heartdata.questions_for(cid)),
             "total_memories": len(char.get("episodic_memory_set") or []),
+            "dev_memories": dev["memories"] if dev else 0,
+            "dev_prepared": bool(dev),
+            "full_prepared": bool(full),
+            # kept for older callers: "the best available snapshot, whichever tier"
             "prepared": bool(best),
             "prepared_memories": best["memories"] if best else 0,
-            "full_protocol": bool(best and best["full_protocol"]),
+            "full_protocol": bool(full),
             "snapshot_id": best["snapshot_id"] if best else None,
             "snapshot_run": best["run_id"] if best else None,
         })
