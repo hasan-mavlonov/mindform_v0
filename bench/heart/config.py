@@ -7,10 +7,27 @@ touched. Paths to the HEART-Bench checkout come from HEART_BENCH_PATH.
 import os
 
 # --- where HEART-Bench lives (an external clone, pinned by commit) ----------
-HEART_PATH = os.environ.get(
-    "HEART_BENCH_PATH",
-    "/tmp/claude-0/-home-user-mindform-v0/6f2b3bdc-3954-5605-b6f5-1225ff9776a3/scratchpad/HEART-BENCH",
-)
+# Default assumes a sibling checkout next to this repo:
+#   git clone https://github.com/peng-weihan/HEART-BENCH.git
+#   cd mindform_v0 && export HEART_BENCH_PATH=../HEART-BENCH   # or just clone it there
+# Override with HEART_BENCH_PATH if you keep the clone somewhere else.
+HEART_PATH = os.environ.get("HEART_BENCH_PATH", os.path.join("..", "HEART-BENCH"))
+
+
+def require_heart_bench():
+    """Fail fast with instructions instead of a bare FileNotFoundError deep in
+    heartdata._load. Call this before touching any HEART-Bench file."""
+    marker = os.path.join(HEART_PATH, "benchmark", "characters.json")
+    if os.path.isfile(marker):
+        return
+    raise SystemExit(
+        f"\nHEART-Bench checkout not found at: {os.path.abspath(HEART_PATH)}\n"
+        f"(looked for {marker})\n\n"
+        f"Clone it and point HEART_BENCH_PATH at it:\n"
+        f"  git clone https://github.com/peng-weihan/HEART-BENCH.git\n"
+        f"  export HEART_BENCH_PATH=/path/to/HEART-BENCH\n"
+        f"or clone it as a sibling of this repo (the default: ../HEART-BENCH).\n"
+    )
 
 # --- where our results go ---------------------------------------------------
 RESULTS_ROOT = os.environ.get("HEART_RESULTS", "data/benchmark/heart")

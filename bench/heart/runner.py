@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from bench.heart import arms, heartdata, mfadapter
 from bench.heart.config import (
     RESULTS_ROOT, MODEL, TEMPERATURE, MAX_TOKENS, TOP_K, TEMPERATURE_NOTE,
-    RATE_IN, RATE_OUT, HEART_PATH,
+    RATE_IN, RATE_OUT, HEART_PATH, require_heart_bench,
 )
 from bench.heart.logbook import Logbook, new_run_id
 
@@ -258,6 +258,7 @@ def main():
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--no-resume", action="store_true")
     args = ap.parse_args()
+    require_heart_bench()
 
     if args.stage == 0:
         n_mem = args.memories if args.memories is not None else 50
