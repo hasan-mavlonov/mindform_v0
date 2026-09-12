@@ -72,6 +72,46 @@ class _ReplyPatch:
         return False
 
 
+class NoThinkingPatch:
+    """Inject ``reasoning_effort="none"`` into every chat call made in-process.
+
+    The default Gemini model is a thinking model, and ``core/llm.py`` -- which is
+    production code and out of scope for this harness -- does not pass the flag.
+    Measured on one appraisal call: 6.5 s and 1,893 total tokens with reasoning
+    on, versus 1.0 s and 1,028 with it off (865 of those tokens are invisible
+    reasoning).
+
+    This patches the OpenAI SDK's create() at the boundary rather than
+    reimplementing ``complete_json``, so prompts, retries, parsing, temperature
+    and max_tokens stay byte-identical and the ONLY difference between a patched
+    and unpatched ingestion is the one kwarg. That is what makes the A/B
+    interpretable.
+
+    It changes how personality forms, so it is opt-in and always recorded in the
+    run manifest -- never a silent default.
+    """
+
+    def __init__(self, effort="none"):
+        self.effort = effort
+
+    def __enter__(self):
+        from openai.resources.chat import completions as _c
+        self._cls = _c.Completions
+        self._orig = self._cls.create
+        effort = self.effort
+
+        def create(inner_self, *args, **kwargs):
+            kwargs.setdefault("reasoning_effort", effort)
+            return self._orig(inner_self, *args, **kwargs)
+
+        self._cls.create = create
+        return self
+
+    def __exit__(self, *exc):
+        self._cls.create = self._orig
+        return False
+
+
 def ingest_memory(name, text):
     """One memory through MindForm's normal experience pipeline. Returns the snapshot."""
     from web.engine_bridge import run_turn

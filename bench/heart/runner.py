@@ -53,21 +53,41 @@ def ingest_phase(log, char, memories, name, run_dir, resume=True):
             raise RunInvalid("restored snapshot does not match its manifest hash")
         return sid, manifest, []
 
+    # Mid-run resume. run_turn calls save_character every turn, so a long
+    # ingestion that dies at memory 700 has 700 memories on disk already; only
+    # the freeze is missing. Pick up from experience_count rather than starting
+    # over -- a 1,000-memory ingestion is hours long and must survive a restart.
+    done = 0
+    if resume:
+        try:
+            done = int(mfadapter.load_character(name).get("experience_count") or 0)
+        except Exception:
+            done = 0
+    if done and done < len(memories):
+        log.say(f"Partial ingestion found: {done}/{len(memories)} already formed — resuming.")
+        log.event("ingest_resume_partial", character=char["id"], already=done,
+                  remaining=len(memories) - done)
+    elif done >= len(memories) and done:
+        log.say(f"All {done} memories already ingested; freezing.")
+    else:
+        mfadapter.create_neutral(name, char.get("occupation", "N/A"))
+
     log.banner(f"INGESTION | {char['id']} | {len(memories)} memories, chronological",
-               f"neutral start · reply generation skipped · engine path: run_turn")
-    mfadapter.create_neutral(name, char.get("occupation", "N/A"))
+               f"neutral start · reply generation skipped · engine path: run_turn"
+               + (f" · resuming at {done}" if done else ""))
     log.event("ingest_start", character=char["id"], memories=len(memories),
-              neutral_start=True, big_five_used=False)
+              neutral_start=(done == 0), big_five_used=False, resumed_from=done)
 
     t0 = time.time()
-    steps = mfadapter.ingest_all(name, memories, log, on_step=log.ingest_tick)
+    steps = mfadapter.ingest_all(name, memories[done:], log, on_step=log.ingest_tick)
     dt = time.time() - t0
 
     sid, manifest = mfadapter.freeze(name, run_dir, "frozen")
     errs = [s for s in steps if s.get("error")]
     log.say(f"\nIngested {len(steps)} memories in {dt/60:.1f} min "
             f"({len(errs)} errors). Snapshot {sid[:16]}…")
-    final = steps[-1]["traits_after"] if steps else {}
+    final = steps[-1]["traits_after"] if steps else mfadapter.trait_vector(
+        mfadapter.load_character(name))
     log.say("Formed traits: " + "  ".join(f"{k}{final.get(k,0):+.3f}" for k in "OCEAN"))
     log.event("ingest_done", character=char["id"], snapshot_id=sid,
               steps=len(steps), errors=len(errs), seconds=round(dt, 1),
