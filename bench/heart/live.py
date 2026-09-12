@@ -141,7 +141,7 @@ def _protocol_for(mode, snap, character):
                     f"HEART-Bench score — the character is under-formed."}
 
 
-def _worker(mode, character, selected_arms, n_questions):
+def _worker(mode, character, selected_arms, n_questions, tier="dev"):
     log = None
     try:
         chars = heartdata.load_characters()
@@ -152,8 +152,12 @@ def _worker(mode, character, selected_arms, n_questions):
         log = Logbook(run_id, RESULTS_ROOT)
         RUN.set(run_id=run_id, run_dir=log.dir, status="preparing")
 
-        # ---- snapshot: reuse a prepared one, or build it (full mode) -------
-        snap = snapshots.best_for(character)
+        # ---- snapshot: reuse the requested tier, or build the full one -----
+        # Full Protocol Benchmark always targets the full 1000-memory snapshot,
+        # regardless of which tier was selected in the character picker -- that
+        # selector exists for quick/character mode, where the tier choice is
+        # the whole point (never silently substitute one tier for the other).
+        snap = snapshots.best_for_tier(character, "full" if mode == "full" else tier)
         if mode == "full" and not (snap and snap["full_protocol"]):
             all_mem = heartdata.ingestible_memories(char)
             mfadapter.register_id_map(all_mem)
@@ -179,10 +183,15 @@ def _worker(mode, character, selected_arms, n_questions):
             RUN.set(prepare={"active": False, "done": len(all_mem),
                              "total": len(all_mem), "eta_s": 0})
         elif not snap:
+            if tier == "full":
+                raise RuntimeError(
+                    f"{character} has no full (1000-memory) snapshot prepared. Run "
+                    f"Full Protocol Benchmark for this character first, or pick its "
+                    f"dev snapshot instead if one exists.")
             raise RuntimeError(
-                f"{character} has no prepared snapshot. Run Full Benchmark for this "
-                f"character first (it forms the character from its memories), or pick "
-                f"a prepared character.")
+                f"{character} has no dev snapshot prepared. Prepare one with:\n"
+                f"  python -m bench.heart.runner --stage 0 --character {character}\n"
+                f"or run Full Protocol Benchmark for the full 1000-memory character.")
 
         name = snap["bench_name"]
         snap_run_dir, snap_label = snap["run_dir"], snap["label"]
@@ -339,7 +348,7 @@ def _worker(mode, character, selected_arms, n_questions):
             log.event("run_error", error=str(exc))
 
 
-def start_run(mode, character, selected_arms, n_questions=None):
+def start_run(mode, character, selected_arms, n_questions=None, tier="dev"):
     with RUN.lock:
         if RUN.status in ("running", "preparing"):
             return False, "a run is already in progress"
@@ -348,7 +357,7 @@ def start_run(mode, character, selected_arms, n_questions=None):
     RUN.set(mode=mode, character=character, selected_arms=selected_arms,
             status="preparing", started_at=time.time())
     t = threading.Thread(target=_worker,
-                         args=(mode, character, selected_arms, n_questions),
+                         args=(mode, character, selected_arms, n_questions, tier),
                          daemon=True)
     RUN.thread = t
     t.start()
@@ -409,7 +418,8 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = start_run(body.get("mode", "quick"),
                                 body.get("character", "CHAR_01"),
                                 body.get("arms") or ["mindform_d2"],
-                                body.get("n_questions"))
+                                body.get("n_questions"),
+                                body.get("tier", "dev"))
             return self._send({"ok": ok, "message": msg}, 200 if ok else 409)
         if self.path.startswith("/api/stop"):
             RUN.stop_flag.set()
@@ -533,7 +543,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const ARMCLS={naive_rag:"a1",mindform_d1:"a2",mindform_d2:"a3"};
 const ARMNM={naive_rag:"Naive RAG",mindform_d1:"MindForm D1",mindform_d2:"MindForm D2"};
 let SETUP=null, STATE=null, OPEN=new Set(), DEBUG=false;
-let PICKED=new Set(["mindform_d2"]), MODE="quick", CHARSEL="CHAR_01";
+let PICKED=new Set(["mindform_d2"]), MODE="quick", CHARSEL="CHAR_01::dev";
 function pick(a,on){ on?PICKED.add(a):PICKED.delete(a); }
 
 async function setup(){ SETUP=await (await fetch("/api/setup")).json(); }
@@ -551,24 +561,33 @@ async function poll(){
 }
 async function start(){
   const mode=document.getElementById("mode").value;
-  const character=document.getElementById("char").value;
+  // The character selector's value is "CHAR_id::tier" -- dev and full snapshots
+  // are never the same thing, so which tier was picked always travels with the
+  // character id, right through to the /api/start body.
+  const [character,tier]=document.getElementById("char").value.split("::");
   const arms=[...document.querySelectorAll(".arm:checked")].map(e=>e.value);
   if(!arms.length){ alert("Pick at least one system to test."); return; }
   const c=SETUP.characters.find(x=>x.character===character);
   if(mode==="full"){
-    if(!confirm(`Full Protocol Benchmark for ${character}\n\nThis forms the character `
-      +`from all ${c.total_memories} memories before answering. Measured rate is ~33 s `
-      +`per memory, so expect roughly ${(c.total_memories*33/3600).toFixed(1)} hours `
+    if(!c.full_prepared && !confirm(`Full Protocol Benchmark for ${character}\n\nThis forms `
+      +`the character from all ${c.total_memories} memories before answering. Measured rate `
+      +`is ~33 s per memory, so expect roughly ${(c.total_memories*33/3600).toFixed(1)} hours `
       +`before the first question.\n\nStart?`)) return;
-  } else if(!c.prepared){
-    alert(`${character} has no prepared snapshot yet, so Quick Test and Character Test `
-      +`have nothing to answer from.\n\nRun a Full Protocol Benchmark for this character `
-      +`first (forms it from its memories), or pick a character that's already prepared.`);
+  } else if(tier==="full" && !c.full_prepared){
+    alert(`${character}'s full ${c.total_memories}-memory snapshot hasn't been prepared yet, `
+      +`so Quick Test and Character Test have nothing to answer from at that tier.\n\nRun a `
+      +`Full Protocol Benchmark for this character first, or pick its dev snapshot instead.`);
+    return;
+  } else if(tier!=="full" && !c.dev_prepared){
+    alert(`${character} has no dev snapshot prepared, so Quick Test and Character Test have `
+      +`nothing to answer from.\n\nPrepare one with:\n`
+      +`  python -m bench.heart.runner --stage 0 --character ${character}\n`
+      +`or run a Full Protocol Benchmark for the full 1,000-memory character.`);
     return;
   }
   LAST_STATE_JSON=null;   // force the next poll to render, even if state looks unchanged
   const r=await fetch("/api/start",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({mode,character,arms})});
+    body:JSON.stringify({mode,character,tier,arms})});
   if(!r.ok){ const j=await r.json(); alert(j.message); }
   poll();
 }
@@ -580,11 +599,23 @@ function controls(){
   const curMode=document.getElementById("mode")?.value||MODE;
   const curChar=document.getElementById("char")?.value||CHARSEL;
   MODE=curMode; CHARSEL=curChar;
-  const opts=chars.map(c=>{
-    const tag=c.prepared?`${c.prepared_memories}/${c.total_memories} mem prepared`
-                        :"not prepared";
-    return `<option value="${c.character}" ${c.character===curChar?"selected":""}>`
-         + `${c.character} — ${c.questions} questions — ${tag}</option>`;
+  // Each character offers up to two distinct options -- a dev (partial-memory)
+  // snapshot and the full 1,000-memory one -- so a 50-memory dev run is never
+  // presented, or selectable, as if it were the full benchmark.
+  const opts=chars.flatMap(c=>{
+    const rows=[];
+    if(c.dev_prepared){
+      const v=`${c.character}::dev`;
+      rows.push(`<option value="${v}" ${v===curChar?"selected":""}>`
+        + `${c.character} — dev snapshot (${c.dev_memories} memories) — `
+        + `${c.questions} questions</option>`);
+    }
+    const fv=`${c.character}::full`;
+    const fullTag=c.full_prepared?"prepared":"not prepared";
+    rows.push(`<option value="${fv}" ${fv===curChar?"selected":""}>`
+      + `${c.character} — full snapshot (${c.total_memories} memories, ${fullTag}) — `
+      + `${c.questions} questions</option>`);
+    return rows;
   }).join("");
   return `<div class="card"><div class="controls">
     <div><label>Mode</label><select id="mode" ${running?"disabled":""}>
