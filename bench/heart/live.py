@@ -30,13 +30,15 @@ never presented as the official benchmark.
 import argparse
 import json
 import os
+import signal
 import threading
 import time
 import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from bench.heart import arms, heartdata, mfadapter, runner, snapshots
+from bench.heart import (arms, checkpoint, formation, heartdata, mfadapter, runner,
+                         snapshots)
 from bench.heart.config import (
     RESULTS_ROOT, MODEL, TEMPERATURE, MAX_TOKENS, TOP_K, REASONING_EFFORT,
     require_heart_bench,
@@ -75,6 +77,9 @@ class Run:
             self.protocol = None          # dict describing faithfulness
             self.snapshot = None
             self.prepare = {"active": False, "done": 0, "total": 0, "eta_s": None}
+            self.formation = None         # live Monitor payload while forming
+            self.monitor = None
+            self.stopped_at_memory = None
             self.total_questions = 0
             self.question_index = 0
             self.current = None
@@ -100,6 +105,8 @@ class Run:
                 "arms": self.selected_arms, "protocol": self.protocol,
                 "snapshot": self.snapshot,
                 "prepare": dict(self.prepare),
+                "formation": (self.monitor.payload() if self.monitor else self.formation),
+                "stopped_at_memory": self.stopped_at_memory,
                 "question_index": self.question_index,
                 "total_questions": self.total_questions,
                 "cells_done": done, "cells_total": total_cells,
@@ -141,7 +148,8 @@ def _protocol_for(mode, snap, character):
                     f"HEART-Bench score — the character is under-formed."}
 
 
-def _worker(mode, character, selected_arms, n_questions, tier="dev"):
+def _worker(mode, character, selected_arms, n_questions, tier="dev",
+            fresh=False):
     log = None
     try:
         chars = heartdata.load_characters()
@@ -160,28 +168,37 @@ def _worker(mode, character, selected_arms, n_questions, tier="dev"):
         snap = snapshots.best_for_tier(character, "full" if mode == "full" else tier)
         if mode == "full" and not (snap and snap["full_protocol"]):
             all_mem = heartdata.ingestible_memories(char)
-            mfadapter.register_id_map(all_mem)
             name = f"heartbench {character}"
-            RUN.set(prepare={"active": True, "done": 0, "total": len(all_mem),
-                             "eta_s": len(all_mem) * 33})
+            decision = formation.plan(character, name, all_mem)
+            if decision["action"] == "blocked" and not fresh:
+                raise RuntimeError(
+                    f"{character} has a checkpoint that cannot be resumed "
+                    f"({decision['reason']}). Choose \u201cStart over\u201d to discard "
+                    f"{decision['done']} formed memories and begin again.")
 
-            def tick(i, total, mem, traits, dt_ms):
-                if RUN.stop_flag.is_set():
-                    raise KeyboardInterrupt("stopped during preparation")
-                RUN.set(prepare={"active": True, "done": i + 1, "total": total,
-                                 "eta_s": int((total - i - 1) * (dt_ms / 1000.0))})
-
+            monitor = formation.Monitor(character, len(all_mem),
+                                        done_at_start=decision.get("done", 0), echo=True)
+            RUN.set(prepare={"active": True, "done": decision.get("done", 0),
+                             "total": len(all_mem), "eta_s": None},
+                    monitor=monitor)
             log.event("run_start", mode=mode, character=character, arms=selected_arms,
                       n_memories=len(all_mem), model=MODEL, temperature=TEMPERATURE,
-                      max_tokens=MAX_TOKENS, top_k=TOP_K, ui="live")
-            mfadapter.create_neutral(name, char.get("occupation", "N/A"))
-            mfadapter.ingest_all(name, all_mem, log, on_step=tick)
+                      max_tokens=MAX_TOKENS, top_k=TOP_K, ui="live",
+                      resume_action=decision["action"], resume_from=decision.get("done", 0))
+
+            # The formation lock is what stops a second browser tab -- or a CLI run --
+            # from forming the same character into the same files at the same time.
+            with formation.FormationLock(character):
+                formation.form(character, char, all_mem, name, log, monitor,
+                               cancel=RUN.stop_flag.is_set, decision=decision,
+                               fresh=fresh)
             frozen_id, _ = mfadapter.freeze(name, log.dir, "frozen")
             snap = {"memories": len(all_mem), "full_protocol": True,
                     "snapshot_id": frozen_id, "run_dir": log.dir, "label": "frozen",
                     "bench_name": name, "run_id": run_id, "character": character}
             RUN.set(prepare={"active": False, "done": len(all_mem),
-                             "total": len(all_mem), "eta_s": 0})
+                             "total": len(all_mem), "eta_s": 0},
+                    formation=monitor.payload(), monitor=None)
         elif not snap:
             if tier == "full":
                 raise RuntimeError(
@@ -332,14 +349,35 @@ def _worker(mode, character, selected_arms, n_questions, tier="dev"):
                                       for a in selected_arms},
                   status=RUN.status)
 
+    except formation.FormationPaused as exc:
+        # The checkpoint is already on disk; this is a stop, not a loss.
+        with RUN.lock:
+            mon = RUN.monitor
+        RUN.set(status="error", error=str(exc), finished_at=time.time(),
+                formation=(mon.payload() if mon else None), monitor=None,
+                stopped_at_memory=(mon.done if mon else None))
     except runner.RunInvalid as exc:
         RUN.set(status="error", error=f"RUN INVALID — {exc}", finished_at=time.time())
         with RUN.lock:
             RUN.integrity["leaks"] += 1 if "LEAK" in str(exc) else 0
         if log:
             log.event("run_invalid", reason=str(exc))
-    except KeyboardInterrupt:
-        RUN.set(status="stopped", finished_at=time.time())
+    except (mfadapter.Cancelled, KeyboardInterrupt) as exc:
+        # Cooperative stop: the engine saves a character only at the end of a
+        # memory, so whatever was in flight simply did not happen. The checkpoint
+        # already on disk is the truth, and it is what the next run resumes from.
+        with RUN.lock:
+            mon = RUN.monitor
+        done = mon.done if mon else None
+        RUN.set(status="stopped", finished_at=time.time(),
+                formation=(mon.payload() if mon else None), monitor=None,
+                stopped_at_memory=done)
+        if mon:
+            mon.note(f"stopped safely at {mon.done}/{mon.total} — "
+                     f"resume will continue from memory {mon.done + 1}", "■")
+        if log:
+            log.event("formation_stopped", character=character, completed=done,
+                      reason=str(exc))
     except Exception as exc:
         RUN.set(status="error", error=f"{type(exc).__name__}: {exc}",
                 finished_at=time.time())
@@ -348,7 +386,8 @@ def _worker(mode, character, selected_arms, n_questions, tier="dev"):
             log.event("run_error", error=str(exc))
 
 
-def start_run(mode, character, selected_arms, n_questions=None, tier="dev"):
+def start_run(mode, character, selected_arms, n_questions=None, tier="dev",
+              fresh=False):
     with RUN.lock:
         if RUN.status in ("running", "preparing"):
             return False, "a run is already in progress"
@@ -357,7 +396,8 @@ def start_run(mode, character, selected_arms, n_questions=None, tier="dev"):
     RUN.set(mode=mode, character=character, selected_arms=selected_arms,
             status="preparing", started_at=time.time())
     t = threading.Thread(target=_worker,
-                         args=(mode, character, selected_arms, n_questions, tier),
+                         args=(mode, character, selected_arms, n_questions, tier,
+                               fresh),
                          daemon=True)
     RUN.thread = t
     t.start()
@@ -419,7 +459,8 @@ class Handler(BaseHTTPRequestHandler):
                                 body.get("character", "CHAR_01"),
                                 body.get("arms") or ["mindform_d2"],
                                 body.get("n_questions"),
-                                body.get("tier", "dev"))
+                                body.get("tier", "dev"),
+                                bool(body.get("fresh")))
             return self._send({"ok": ok, "message": msg}, 200 if ok else 409)
         if self.path.startswith("/api/stop"):
             RUN.stop_flag.set()
@@ -536,8 +577,36 @@ pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size
 .done .big{font-size:30px;font-weight:700;letter-spacing:-.02em}
 .chk{display:flex;flex-direction:column;gap:5px;font-size:13.5px;margin-top:12px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px 18px;
+  margin-top:14px}
+.fgrid .k{font:600 10.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--mut)}
+.fgrid .v{font-size:17px;font-weight:600;margin-top:3px;letter-spacing:-.01em}
+.fgrid .v.sm{font-size:13.5px;font-weight:500}
+.stages{display:flex;flex-direction:column;gap:4px;margin-top:12px;font:12.5px/1.5 var(--mono)}
+.stages div{display:flex;gap:8px}
+.stages .lbl{flex:1}
+.waiting{color:var(--mut);font-style:italic}
+.feed{margin-top:12px;max-height:230px;overflow-y:auto;background:var(--sunk);
+  border:1px solid var(--rule);border-radius:8px;padding:10px 12px;
+  font:12px/1.75 var(--mono)}
+.feed div{display:flex;gap:9px;white-space:pre-wrap}
+.feed .ts{color:var(--mut);flex:none}
+.feed .ic{flex:none;width:1em;text-align:center}
+.tag{display:inline-block;font:600 10px/1.6 var(--mono);letter-spacing:.07em;
+  padding:1px 7px;border-radius:99px;border:1px solid var(--rule);color:var(--sec);
+  text-transform:uppercase;margin-left:8px;vertical-align:2px}
+.tag.ok{border-color:var(--good);color:var(--good)}
+.tag.warn{border-color:var(--bad);color:var(--bad)}
 </style></head><body>
-<div class="wrap" id="root"></div>
+<div class="wrap">
+  <h1>RUN HEART-BENCH <span class="dim">· MindForm</span></h1>
+  <div id="r-controls"></div>
+  <div id="r-banners"></div>
+  <div id="r-formation"></div>
+  <div id="r-progress"></div>
+  <div id="r-main"></div>
+</div>
 <script>
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ARMCLS={naive_rag:"a1",mindform_d1:"a2",mindform_d2:"a3"};
@@ -547,19 +616,29 @@ let PICKED=new Set(["mindform_d2"]), MODE="quick", CHARSEL="CHAR_01::dev";
 function pick(a,on){ on?PICKED.add(a):PICKED.delete(a); }
 
 async function setup(){ SETUP=await (await fetch("/api/setup")).json(); }
-let LAST_STATE_JSON=null;
+let WAS_RUNNING=false;
 async function poll(){
   try{
     const j=await (await fetch("/api/state",{cache:"no-store"})).json();
-    const s=JSON.stringify(j);
-    // innerHTML replacement destroys every child node, including a native
-    // <select> mid-dropdown -- that's what was slamming the controls shut.
-    // Re-render only when the server actually reports something new.
-    if(s===LAST_STATE_JSON) return;
-    LAST_STATE_JSON=s; STATE=j; render();
+    STATE=j;
+    const now=isRunning();
+    // A run that has just ended has almost certainly moved the checkpoint, and
+    // the catalogue is what decides whether the button says Run or Resume -- so
+    // refetch it once here instead of making the user reload the page.
+    if(WAS_RUNNING && !now){ WAS_RUNNING=false; await setup(); }
+    if(now) WAS_RUNNING=true;
+    render();
   }catch(e){}
 }
-async function start(){
+function reselect(){
+  // The picked mode/character decide whether this is a Run or a Resume, so the
+  // controls have to repaint on change -- safe here, nothing is in flight.
+  MODE=document.getElementById("mode").value;
+  CHARSEL=document.getElementById("char").value;
+  render();
+}
+
+async function launch(fresh){
   const mode=document.getElementById("mode").value;
   // The character selector's value is "CHAR_id::tier" -- dev and full snapshots
   // are never the same thing, so which tier was picked always travels with the
@@ -568,15 +647,37 @@ async function start(){
   const arms=[...document.querySelectorAll(".arm:checked")].map(e=>e.value);
   if(!arms.length){ alert("Pick at least one system to test."); return; }
   const c=SETUP.characters.find(x=>x.character===character);
+  const f=c.formation||{};
   if(mode==="full"){
-    if(!c.full_prepared && !confirm(`Full Protocol Benchmark for ${character}\n\nThis forms `
-      +`the character from all ${c.total_memories} memories before answering. Measured rate `
-      +`is ~33 s per memory, so expect roughly ${(c.total_memories*33/3600).toFixed(1)} hours `
-      +`before the first question.\n\nStart?`)) return;
+    if(fresh){
+      // Destructive: this is the only path that throws formed memories away, so
+      // it is never reached by clicking the normal button.
+      if(!confirm(`Start over and DELETE existing progress for ${character}?\n\n`
+        +`${f.done||0} formed memories will be permanently discarded and the character `
+        +`will be rebuilt from memory 1. At the measured rate that is about `
+        +`${(c.total_memories*33/3600).toFixed(1)} hours of work.\n\nThis cannot be undone.`)) return;
+      if(!confirm(`Really delete ${f.done||0} formed memories for ${character}?`)) return;
+    } else if(f.resumable){
+      if(!confirm(`Resume ${character} from memory ${f.resume_from}?\n\n`
+        +`${f.done} of ${f.total} memories are already formed and checkpointed. `
+        +`About ${(((c.total_memories-f.done)*33)/3600).toFixed(1)} hours remain.`)) return;
+    } else if(f.state==="corrupt"||f.state==="stale"){
+      alert(`${character} has a checkpoint that cannot be resumed:\n\n${f.detail}\n\n`
+        +`Use “Start over” to discard it and form the character again.`);
+      return;
+    } else if(!c.full_prepared){
+      if(!confirm(`Full Protocol Benchmark for ${character}\n\nThis forms the character `
+        +`from all ${c.total_memories} memories before answering. Measured rate is ~33 s `
+        +`per memory, so expect roughly ${(c.total_memories*33/3600).toFixed(1)} hours `
+        +`before the first question.\n\nProgress is checkpointed after every memory, so `
+        +`you can stop and resume at any time.\n\nStart?`)) return;
+    }
   } else if(tier==="full" && !c.full_prepared){
     alert(`${character}'s full ${c.total_memories}-memory snapshot hasn't been prepared yet, `
-      +`so Quick Test and Character Test have nothing to answer from at that tier.\n\nRun a `
-      +`Full Protocol Benchmark for this character first, or pick its dev snapshot instead.`);
+      +`so Quick Test and Character Test have nothing to answer from at that tier.`
+      +(f.resumable?`\n\nIts formation is checkpointed at ${f.done}/${f.total} memories — `
+        +`switch to Full Protocol Benchmark to resume it.`:"")
+      +`\n\nRun a Full Protocol Benchmark for this character first, or pick its dev snapshot.`);
     return;
   } else if(tier!=="full" && !c.dev_prepared){
     alert(`${character} has no dev snapshot prepared, so Quick Test and Character Test have `
@@ -585,13 +686,22 @@ async function start(){
       +`or run a Full Protocol Benchmark for the full 1,000-memory character.`);
     return;
   }
-  LAST_STATE_JSON=null;   // force the next poll to render, even if state looks unchanged
+  Object.keys(LAST).forEach(k=>delete LAST[k]);   // force a full repaint on start
+  FEED_N=0;
   const r=await fetch("/api/start",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({mode,character,tier,arms})});
+    body:JSON.stringify({mode,character,tier,arms,fresh:!!fresh})});
   if(!r.ok){ const j=await r.json(); alert(j.message); }
   poll();
 }
-async function stop(){ await fetch("/api/stop",{method:"POST"}); poll(); }
+async function start(){ return launch(false); }
+async function startOver(){ return launch(true); }
+
+async function stop(){
+  const btn=event?.target;
+  if(btn){ btn.disabled=true; btn.textContent="Stopping…"; }
+  await fetch("/api/stop",{method:"POST"});
+  poll();
+}
 
 function controls(){
   const running=STATE && ["running","preparing","stopping"].includes(STATE.status);
@@ -611,19 +721,35 @@ function controls(){
         + `${c.questions} questions</option>`);
     }
     const fv=`${c.character}::full`;
-    const fullTag=c.full_prepared?"prepared":"not prepared";
+    const f=c.formation||{};
+    // A half-formed character is neither "prepared" nor "not prepared" -- saying
+    // "not prepared" is what made an interrupted 252-memory run look like it had
+    // never happened, so its progress is named right here in the option.
+    let fullTag;
+    if(c.full_prepared) fullTag="prepared";
+    else if(f.resumable) fullTag=`${f.done}/${f.total} memories — resumable`;
+    else if(f.state==="corrupt"||f.state==="stale")
+      fullTag=`${f.done}/${f.total} memories — checkpoint unusable`;
+    else fullTag="not prepared";
     rows.push(`<option value="${fv}" ${fv===curChar?"selected":""}>`
       + `${c.character} — full snapshot (${c.total_memories} memories, ${fullTag}) — `
       + `${c.questions} questions</option>`);
     return rows;
   }).join("");
+  const [curId,curTier]=(curChar||"").split("::");
+  const curCharObj=chars.find(c=>c.character===curId)||{};
+  // Resume only makes sense for the full tier under Full Protocol -- that is the
+  // only run that forms anything, so it is the only one with progress to resume.
+  const curF=(curTier==="full"&&curMode==="full")?(curCharObj.formation||null):null;
+  const resumable=!!(curF&&curF.resumable);
   return `<div class="card"><div class="controls">
-    <div><label>Mode</label><select id="mode" ${running?"disabled":""}>
+    <div><label>Mode</label><select id="mode" ${running?"disabled":""} onchange="reselect()">
       <option value="quick" ${curMode==="quick"?"selected":""}>Quick Test — ~${SETUP?.quick_n||20} questions</option>
       <option value="character" ${curMode==="character"?"selected":""}>Character Test — all questions</option>
       <option value="full" ${curMode==="full"?"selected":""}>Full Protocol Benchmark — ingest 1,000 memories first</option>
     </select></div>
-    <div><label>Character</label><select id="char" ${running?"disabled":""}>${opts}</select></div>
+    <div><label>Character</label><select id="char" ${running?"disabled":""}
+      onchange="reselect()">${opts}</select></div>
     <div><label>Systems</label><div class="armbox">${
       ["naive_rag","mindform_d1","mindform_d2"].map(a=>{
         // While a run is in flight the boxes mirror what is actually running,
@@ -634,9 +760,20 @@ function controls(){
       }).join("")}
     </div></div>
     <div class="row">
-      <button class="primary" onclick="start()" ${running?"disabled":""}>Run Benchmark</button>
+      <button class="primary" onclick="start()" ${running?"disabled":""}>${
+        resumable?"Resume Benchmark":"Run Benchmark"}</button>
       <button class="danger" onclick="stop()" ${running?"":"disabled"}>Stop</button>
-    </div></div>
+      ${resumable?`<button onclick="startOver()" ${running?"disabled":""}>Start over…</button>`:""}
+    </div>
+    ${resumable?`<div class="small muted" style="margin-top:10px">
+      ${esc(curCharObj.character)} is part-formed: <b>${curF.done} / ${curF.total}</b>
+      memories checkpointed${curF.updated_at?` at ${esc(curF.updated_at)}`:""}.
+      Resume continues from memory <b>${curF.resume_from}</b>.
+      ${curF.adopted?"(recovered from an earlier run's leftover state)":""}</div>`:""}
+    ${curF && (curF.state==="corrupt"||curF.state==="stale")?`<div class="banner err"
+      style="margin-top:10px">Checkpoint at ${curF.done}/${curF.total} cannot be
+      resumed: ${esc(curF.detail||"")}. Use “Start over” to discard it.</div>`:""}
+    </div>
     <div class="small muted" style="margin-top:12px">
       model <span class="mono">${esc(SETUP?.config?.model)}</span> ·
       temp ${SETUP?.config?.temperature} · top-k ${SETUP?.config?.top_k} ·
@@ -652,17 +789,102 @@ function tierBanner(){
     <span class="small muted">${esc(p.note)}</span></div></div>`;
 }
 
+function fmtDur(s){
+  if(s==null||!isFinite(s)) return "—";
+  s=Math.max(0,Math.round(s));
+  if(s<90) return `${s}s`;
+  const h=Math.floor(s/3600), m=Math.round((s%3600)/60);
+  return h?`${h}h ${m}m`:`${m}m`;
+}
+
+// The activity feed is appended to, never rebuilt: rewriting it each poll would
+// throw away the reader's scroll position several times a second.
+let FEED_N=0;
+function feedAppend(entries){
+  const box=document.getElementById("feedbox");
+  if(!box) return;
+  if(entries.length<FEED_N){ box.innerHTML=""; FEED_N=0; }   // new run, new feed
+  const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
+  for(let i=FEED_N;i<entries.length;i++){
+    const e=entries[i], row=document.createElement("div");
+    row.innerHTML=`<span class="ts">${esc(e.t)}</span>`
+                 +`<span class="ic">${esc(e.icon)}</span>`
+                 +`<span>${esc(e.text)}</span>`;
+    box.appendChild(row);
+  }
+  FEED_N=entries.length;
+  if(atBottom) box.scrollTop=box.scrollHeight;
+}
+
+function formationPanel(){
+  const f=STATE?.formation;
+  const el=document.getElementById("r-formation");
+  if(!f){ if(LAST["r-formation"]!==null){ LAST["r-formation"]=null; el.innerHTML=""; FEED_N=0; } return; }
+  // The shell (everything but the feed) is cheap to rebuild and has no controls
+  // in it, so it repaints freely; the feed is appended to separately.
+  const active=STATE.prepare?.active;
+  const stage=f.stage?`${esc(f.stage)} — waiting for the model`:
+              (active?"between stages":"—");
+  const slow=f.stage&&f.stage_elapsed_s>15;
+  const eta=f.eta_s!=null?fmtDur(f.eta_s):
+    `not yet — needs ${5-Math.min(5,f.done-f.resumed_from)} more memories`;
+  const stages=(f.stages_done||[]).map(s=>
+    `<div><span class="ic">${s.error?"!":"✓"}</span><span class="lbl">${esc(s.label)}</span>`
+    +`<span class="muted">${s.seconds}s</span></div>`).join("")
+    +(f.stage?`<div class="waiting"><span class="ic">→</span><span class="lbl">`
+      +`${esc(f.stage)} — waiting…</span><span class="muted">`
+      +`${f.stage_elapsed_s??0}s</span></div>`:"");
+  const sig=JSON.stringify([f.done,f.total,f.stage,f.stage_elapsed_s,f.current_memory,
+    f.stages_done,f.eta_s,f.avg_s,f.avg_last10_s,f.llm_calls,f.retries,f.errors,
+    f.last_checkpoint,f.paused_reason,Math.round(f.elapsed_s||0),active]);
+  if(LAST["r-formation"]!==sig){
+    LAST["r-formation"]=sig;
+    const pct=f.total?100*f.done/f.total:0;
+    el.innerHTML=`<div class="card">
+      <div class="row" style="justify-content:space-between">
+        <label style="margin:0">Forming ${esc(f.character)} from its memories
+          ${f.resumed_from?`<span class="tag ok">resumed at ${f.resumed_from}</span>`:""}
+        </label>
+        <span class="qnum">${f.done} / ${f.total} · ${f.percent}%</span>
+      </div>
+      <div class="bar" style="margin-top:10px"><span style="width:${pct}%"></span></div>
+      ${f.paused_reason?`<div class="banner err" style="margin-top:12px">
+        ${esc(f.paused_reason)}</div>`:""}
+      <div class="fgrid">
+        <div><div class="k">Current memory</div><div class="v sm">
+          ${esc(f.current_memory?.anon_id||"—")}</div></div>
+        <div><div class="k">Current stage</div><div class="v sm ${slow?"waiting":""}">
+          ${stage}${slow?` · ${f.stage_elapsed_s}s`:""}</div></div>
+        <div><div class="k">Elapsed</div><div class="v">${fmtDur(f.elapsed_s)}</div></div>
+        <div><div class="k">Avg / memory</div><div class="v">
+          ${f.avg_s!=null?f.avg_s+"s":"—"}</div></div>
+        <div><div class="k">Avg last 10</div><div class="v">
+          ${f.avg_last10_s!=null?f.avg_last10_s+"s":"—"}</div></div>
+        <div><div class="k">Est. remaining</div><div class="v">${eta}</div></div>
+        <div><div class="k">LLM calls</div><div class="v">
+          ${(f.llm_calls||0).toLocaleString()}</div></div>
+        <div><div class="k">Retries / errors</div><div class="v">
+          ${f.retries||0} / ${f.errors||0}</div></div>
+        <div><div class="k">Last checkpoint</div><div class="v sm">
+          ${f.last_checkpoint?`memory ${f.last_checkpoint.done}<br>
+            <span class="muted">${esc(f.last_checkpoint.at)}</span>`:"—"}</div></div>
+        <div><div class="k">Resume status</div><div class="v sm">
+          <span class="tag ok">SAFE</span></div></div>
+      </div>
+      ${stages?`<div class="stages">${stages}</div>`:""}
+      <div class="feed" id="feedbox"></div>
+      <div class="small muted" style="margin-top:8px">Every completed memory is
+        checkpointed to disk. Stopping here — or Ctrl+C in the terminal — resumes from
+        the next memory, never from the beginning.</div>
+    </div>`;
+    FEED_N=0;
+  }
+  feedAppend(f.feed||[]);
+}
+
 function progress(){
   if(!STATE) return "";
-  const pr=STATE.prepare;
-  if(pr?.active){
-    const pct=pr.total?100*pr.done/pr.total:0;
-    const eta=pr.eta_s!=null?` · ~${(pr.eta_s/60).toFixed(0)} min remaining`:"";
-    return `<div class="card"><label>Forming character from memories</label>
-      <div class="bar"><span style="width:${pct}%"></span></div>
-      <div class="small muted" style="margin-top:8px">${pr.done} / ${pr.total} memories${eta}
-      — this is the expensive step; questions start once it finishes.</div></div>`;
-  }
+  if(STATE.prepare?.active) return "";
   if(!STATE.total_questions) return "";
   const pct=100*STATE.cells_done/Math.max(STATE.cells_total,1);
   return `<div class="card" style="padding:14px 18px">
@@ -820,25 +1042,122 @@ function finished(){
     </div></div></div>`;
 }
 
+// Replacing a region's innerHTML destroys every node inside it -- including the
+// button the user is in the middle of clicking. A click only fires if mousedown
+// and mouseup land on the SAME element, so a control that is re-rendered every
+// poll can never be clicked at all. That is what made the Stop button dead
+// during a run: STATE.elapsed_s changes on every single poll, so the old
+// whole-page diff never matched and the page was rebuilt at 600ms forever.
+// Each region now re-renders only when its OWN inputs change, and the controls
+// region is frozen outright while a run is in flight.
+const LAST={};
+function paint(id, sig, build){
+  if(LAST[id]===sig) return;
+  LAST[id]=sig;
+  document.getElementById(id).innerHTML=build();
+}
+function isRunning(){
+  return !!(STATE && ["running","preparing","stopping"].includes(STATE.status));
+}
 function render(){
+  const running=isRunning();
+  // While a run is in flight nothing in the controls is editable, so their
+  // content is pinned: no re-render, no destroyed Stop button.
+  paint("r-controls", JSON.stringify([running, MODE, CHARSEL, [...PICKED].sort(),
+    running?null:(SETUP?.characters||[]).map(c=>[c.character,c.dev_prepared,
+      c.full_prepared,c.dev_memories,c.total_memories,c.questions,
+      c.formation?.state,c.formation?.done,c.formation?.resumable])]), controls);
+  paint("r-banners", JSON.stringify([STATE?.error,STATE?.status,
+    STATE?.stopped_at_memory,STATE?.protocol?.tier]), banners);
+  formationPanel();
+  paint("r-progress", JSON.stringify([STATE?.prepare?.active,STATE?.question_index,
+    STATE?.total_questions,STATE?.cells_done,STATE?.cells_total,
+    Math.round(STATE?.elapsed_s||0)]), progress);
+  paint("r-main", JSON.stringify([STATE?.status,STATE?.current,STATE?.history?.length,
+    STATE?.tallies,STATE?.perf,[...OPEN],DEBUG,
+    STATE?.history?.length?STATE.history[STATE.history.length-1]:null]),
+    ()=>finished()+liveQuestion()+scores()+history());
+}
+function banners(){
   let h="";
-  h+=`<h1>RUN HEART-BENCH <span class="dim">· MindForm</span></h1>`;
-  h+=controls();
   if(STATE?.error) h+=`<div class="banner err">${esc(STATE.error)}</div>`;
+  if(STATE?.status==="stopping")
+    h+=`<div class="banner info"><b>Stopping…</b> finishing the memory in flight and
+        saving the checkpoint. Nothing already completed is lost.</div>`;
+  if(STATE?.status==="stopped" && STATE?.stopped_at_memory!=null)
+    h+=`<div class="banner info"><b>Stopped safely at
+        ${STATE.stopped_at_memory} / ${STATE.formation?.total||"?"} memories.</b><br>
+        Resume will continue from memory ${STATE.stopped_at_memory+1}. The checkpoint
+        is on disk; the server is still running.</div>`;
   if(STATE?.status==="idle")
     h+=`<div class="banner info">Pick a mode and click <b>Run Benchmark</b>. Quick Test
         against a prepared character takes a couple of minutes.</div>`;
   h+=tierBanner();
-  h+=progress();
-  h+=finished();
-  h+=liveQuestion();
-  h+=scores();
-  h+=history();
-  document.getElementById("root").innerHTML=h;
+  return h;
 }
 
 (async()=>{ await setup(); await poll(); setInterval(poll,600); })();
 </script></body></html>"""
+
+
+def _drain_worker(reason, timeout=90):
+    """Ask a running formation to stop, and wait for it to checkpoint.
+
+    Called from the SIGINT handler and at shutdown. The worker only notices a
+    cancellation between LLM calls, so this waits rather than returning
+    immediately -- exiting while the engine is mid-memory is exactly how a run
+    used to end up with no record of where it got to.
+    """
+    with RUN.lock:
+        busy = RUN.status in ("running", "preparing", "stopping")
+        mon = RUN.monitor
+        thread = RUN.thread
+    if not busy or not thread or not thread.is_alive():
+        return False
+    print(f"\n{reason}\n")
+    if mon:
+        print(f"Saving checkpoint… {mon.character_id}: {mon.done}/{mon.total} memories "
+              f"safely completed.")
+    else:
+        print("Saving checkpoint…")
+    RUN.stop_flag.set()
+    with RUN.lock:
+        if RUN.status in ("running", "preparing"):
+            RUN.status = "stopping"
+    deadline = time.time() + timeout
+    while thread.is_alive() and time.time() < deadline:
+        thread.join(timeout=1.0)
+    with RUN.lock:
+        mon = RUN.monitor
+        done = RUN.stopped_at_memory
+    if done is None and mon:
+        done = mon.done
+    if done is not None:
+        print(f"\n{RUN.character}: {done} memories safely completed.")
+        print(f"Next run will resume from memory {done + 1}.")
+    elif thread.is_alive():
+        print("\nWorker did not stop in time. The last checkpoint on disk is still "
+              "valid — nothing written since is trusted.")
+    return True
+
+
+def _install_sigint(srv):
+    """Ctrl+C stops the run cleanly the first time, and the server the second."""
+    state = {"count": 0}
+
+    def handler(signum, frame):
+        state["count"] += 1
+        if state["count"] > 1:
+            print("\nSecond interrupt — exiting now.")
+            os._exit(130)
+        stopped = _drain_worker("Interrupt received.")
+        if not stopped:
+            print("\nstopped")
+        else:
+            print("\nStopping server.")
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGINT, handler)
 
 
 def main():
@@ -851,20 +1170,29 @@ def main():
 
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}/"
-    print(f"RUN HEART-BENCH  →  {url}    (ctrl-c to stop)")
-    prepared = [c for c in snapshots.catalogue() if c["prepared"]]
-    for c in prepared:
-        print(f"  prepared: {c['character']}  {c['prepared_memories']}/{c['total_memories']} "
-              f"memories  ·  {c['questions']} questions"
-              + ("" if c["full_protocol"] else "   [development depth]"))
-    if not prepared:
-        print("  no prepared characters yet — Full Protocol Benchmark will form one first")
+    print(f"RUN HEART-BENCH  \u2192  {url}    (ctrl-c to stop)")
+    cat = snapshots.catalogue()
+    for c in cat:
+        f = c.get("formation") or {}
+        if c["prepared"]:
+            print(f"  prepared: {c['character']}  {c['prepared_memories']}/"
+                  f"{c['total_memories']} memories  \u00b7  {c['questions']} questions"
+                  + ("" if c["full_protocol"] else "   [development depth]"))
+        if f.get("resumable"):
+            print(f"  RESUMABLE: {c['character']}  checkpoint at {f['done']}/{f['total']} "
+                  f"memories \u2014 Full Protocol will resume from {f['resume_from']} "
+                  f"(saved {f.get('updated_at')})")
+        elif f.get("state") in ("corrupt", "stale"):
+            print(f"  checkpoint for {c['character']} cannot be resumed: {f.get('detail')}")
+    if not any(c["prepared"] for c in cat):
+        print("  no prepared characters yet \u2014 Full Protocol Benchmark will form one first")
     if args.open:
         webbrowser.open(url)
+    _install_sigint(srv)
     try:
         srv.serve_forever()
-    except KeyboardInterrupt:
-        print("\nstopped")
+    finally:
+        _drain_worker("Shutting down.")
 
 
 if __name__ == "__main__":

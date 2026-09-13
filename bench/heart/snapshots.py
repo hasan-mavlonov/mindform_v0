@@ -13,7 +13,7 @@ import json
 import os
 
 from bench.heart.config import RESULTS_ROOT
-from bench.heart import heartdata
+from bench.heart import checkpoint, heartdata
 
 FULL_DEPTH = 1000
 
@@ -116,6 +116,9 @@ def catalogue():
             "dev_memories": dev["memories"] if dev else 0,
             "dev_prepared": bool(dev),
             "full_prepared": bool(full),
+            # Formation progress, so the UI can offer "resume" instead of
+            # pretending an interrupted 252-memory run never happened.
+            "formation": checkpoint.describe(cid, len(char.get("episodic_memory_set") or [])),
             # kept for older callers: "the best available snapshot, whichever tier"
             "prepared": bool(best),
             "prepared_memories": best["memories"] if best else 0,
