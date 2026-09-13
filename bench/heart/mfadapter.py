@@ -122,15 +122,114 @@ def trait_vector(personality):
     return {d: round(float(personality["traits"].get(d, 0.0)), 4) for d in BASIS}
 
 
-def ingest_all(name, memories, logbook, on_step=None):
+class Cancelled(BaseException):
+    """Raised inside the formation pipeline to stop a run at a safe point.
+
+    Deliberately a BaseException, not an Exception. Every formation node wraps its
+    LLM call in ``except Exception`` and falls back to a deterministic heuristic,
+    so an ordinary exception raised to cancel a run would be swallowed by the very
+    node it was meant to interrupt -- and the memory would finish anyway, formed by
+    the fallback path instead of the model. BaseException passes straight through
+    those handlers, the same way Ctrl+C does.
+    """
+
+
+# Each formation stage is one ``complete_json`` call, made through the binding its
+# own module imported at import time. Patching ``core.llm.complete_json`` would be
+# invisible to them, so the bindings themselves are what get wrapped.
+STAGE_BINDINGS = [
+    ("nodes.llm_appraisal", "appraisal"),
+    ("nodes.llm_impact", "trait update"),
+    ("nodes.values", "values update"),
+    ("nodes.moral", "moral update"),
+    ("nodes.beliefs", "belief extraction"),
+]
+
+
+class StagePatch:
+    """Report every formation LLM call as it happens, and cancel between them.
+
+    Read-only instrumentation: the wrapper forwards its arguments untouched and
+    returns the model's answer untouched, so formation is bit-for-bit what it
+    would be without it. What it adds is (a) a callback per stage, which is the
+    only way to know what a 33-second memory is actually waiting on, and (b) a
+    cancellation check immediately before each call, which turns Stop from "up to
+    a whole memory away" into "as soon as the current call returns".
+    """
+
+    def __init__(self, on_stage=None, cancel=None):
+        self.on_stage = on_stage
+        self.cancel = cancel
+        self._saved = []
+
+    def _wrap(self, label, orig):
+        def wrapped(*args, **kwargs):
+            if self.cancel and self.cancel():
+                raise Cancelled(f"cancelled before {label}")
+            if self.on_stage:
+                self.on_stage("stage_start", label, None, None)
+            t0 = time.time()
+            try:
+                out = orig(*args, **kwargs)
+            except BaseException as exc:
+                if self.on_stage and not isinstance(exc, Cancelled):
+                    self.on_stage("stage_failed", label, time.time() - t0,
+                                  f"{type(exc).__name__}: {exc}")
+                raise
+            if self.on_stage:
+                self.on_stage("stage_done", label, time.time() - t0, None)
+            return out
+        return wrapped
+
+    def __enter__(self):
+        import importlib
+        for mod_name, label in STAGE_BINDINGS:
+            try:
+                mod = importlib.import_module(mod_name)
+            except ImportError:
+                continue
+            orig = getattr(mod, "complete_json", None)
+            if orig is None:
+                continue
+            self._saved.append((mod, orig))
+            mod.complete_json = self._wrap(label, orig)
+        return self
+
+    def __exit__(self, *exc):
+        for mod, orig in self._saved:
+            mod.complete_json = orig
+        self._saved = []
+        return False
+
+
+def ingest_all(name, memories, logbook, on_step=None, start_at=0,
+               on_commit=None, cancel=None, on_stage=None, on_memory_start=None):
     """Ingest chronologically, logging state before/after each step.
 
     ``memories`` comes from heartdata.ingestible_memories -- anonymised ids and
-    raw content_full only.
+    raw content_full only. It is always the COMPLETE ordered list; ``start_at``
+    says how many of its leading memories are already formed and must be skipped.
+    Passing the whole list and an offset, rather than a pre-sliced tail, is what
+    lets the caller checkpoint absolute positions and verify the ordering.
+
+    ``on_commit(done_count, memory)`` fires after each memory is fully ingested
+    AND saved by the engine -- that is the only moment at which the character on
+    disk and the count agree, so it is the only safe moment to checkpoint.
+
+    ``cancel()`` is polled before every memory and before every LLM call within
+    it. Because the engine saves a character exactly once, at the end of a
+    memory, cancelling part-way through simply leaves that memory unformed; it is
+    re-done on resume and nothing is half-applied.
     """
     results = []
-    with _ReplyPatch():
+    with _ReplyPatch(), StagePatch(on_stage=on_stage, cancel=cancel):
         for i, mem in enumerate(memories):
+            if i < start_at:
+                continue
+            if cancel and cancel():
+                raise Cancelled(f"cancelled before memory {i + 1}")
+            if on_memory_start:
+                on_memory_start(i, len(memories), mem)
             p_before = load_character(name)
             before = trait_vector(p_before)
             t0 = time.time()
@@ -167,6 +266,10 @@ def ingest_all(name, memories, logbook, on_step=None):
             results.append(rec)
             if on_step:
                 on_step(i, len(memories), mem, after, dt_ms)
+            # Last, and only once the engine has written the character: the count
+            # on disk is now true, so it is safe to promise it.
+            if on_commit:
+                on_commit(i + 1, mem, rec)
     return results
 
 
