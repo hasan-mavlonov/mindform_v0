@@ -93,6 +93,12 @@ Below are possible behavioural decisions different people might take in this sce
     return prompt
 
 
+# The D2 section header, used both to render the block and to find it again when
+# leak-checking. The leak checker must know exactly which span of the prompt is
+# engine-derived state, so this string is the contract between the two.
+STATE_BLOCK_MARKER = "## Formed Disposition"
+
+
 def _state_block(state):
     """D2 only: the persistent state MindForm formed from these same memories.
 
@@ -101,7 +107,7 @@ def _state_block(state):
     """
     t = state["traits"]
     lines = [
-        "## Formed Disposition",
+        STATE_BLOCK_MARKER,
         "This is the persistent disposition that has formed in this person over the "
         "experiences above (each −1..+1, 0 = unremarkable). Treat it as who they have "
         "become, not as instructions:",
@@ -134,21 +140,105 @@ def prompt_sha(prompt):
 # --------------------------------------------------------------------------
 # leak checking
 # --------------------------------------------------------------------------
-def leak_check(prompt, forbidden, char):
+_NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+")
+
+
+def split_state_block(prompt):
+    """Separate the D2 Formed Disposition block from the rest of the prompt.
+
+    Returns (block, rest). ``block`` is "" when the prompt carries no state
+    section. The split matters because D2's whole purpose is to state MindForm's
+    own formed OCEAN numbers, so that one span is the only place in any prompt
+    where a trait word legitimately sits next to a number.
+    """
+    i = prompt.find(STATE_BLOCK_MARKER)
+    if i < 0:
+        return "", prompt
+    j = prompt.find("\n\n## ", i)
+    if j < 0:
+        j = len(prompt)
+    return prompt[i:j], prompt[:i] + prompt[j:]
+
+
+def _numbers_after(text, word, window=16):
+    """Every numeric token appearing just after each occurrence of ``word``."""
+    out = []
+    for m in re.finditer(re.escape(word), text, re.I):
+        for tok in _NUMBER_RE.findall(text[m.end(): m.end() + window]):
+            try:
+                out.append(float(tok))
+            except ValueError:
+                pass
+    return out
+
+
+def check_state_provenance(block, state, live_traits=None):
+    """Confirm the D2 block is exactly what the engine state renders to.
+
+    This is what lets the numeric trait check below skip the block without
+    weakening anything. Rather than pattern-matching the numbers, it proves
+    where they came from: the block must be byte-identical to ``_state_block``
+    run over the engine's own state, and that state's traits must equal the
+    traits currently on disk for the character. A HEART value could only pass
+    both if the engine had independently formed that exact number, which is the
+    definition of MindForm-derived rather than leaked.
+    """
+    hits = []
+    if block and not state:
+        hits.append("state:block present but no engine state was supplied")
+        return hits
+    if not block:
+        return hits
+    if block != _state_block(state):
+        hits.append("state:block does not match the engine state it claims to render")
+    if live_traits is not None:
+        for d, v in (state.get("traits") or {}).items():
+            if round(float(live_traits.get(d, 0.0)), 4) != round(float(v), 4):
+                hits.append(f"state:{d} does not match the character on disk")
+    return hits
+
+
+def check_state_not_seeded(state, char):
+    """Catch a character that was seeded with HEART's labels rather than formed.
+
+    Provenance proves the D2 numbers came off the engine's own disk, which is
+    the right question for a leak in a PROMPT. It cannot see a leak introduced
+    earlier, at formation time, by building the character from the withheld
+    big_five instead of from the raw memories. One signature of that is
+    unmistakable: all five formed traits landing exactly on HEART's five hidden
+    values. Independent formation reproducing all five to two decimals is not
+    something that happens by chance.
+    """
+    gt = char.get("big_five") or {}
+    traits = (state or {}).get("traits") or {}
+    letter = {"openness": "O", "conscientiousness": "C", "extraversion": "E",
+              "agreeableness": "A", "neuroticism": "N"}
+    pairs = [(float(v), float(traits[letter[k]]))
+             for k, v in gt.items() if letter.get(k) in traits]
+    if len(pairs) == len(letter) and all(round(a, 2) == round(b, 2) for a, b in pairs):
+        return ["state:every formed trait equals HEART's withheld big_five exactly "
+                "-- the character looks seeded, not formed"]
+    return []
+
+
+def leak_check(prompt, forbidden, char, state=None, live_traits=None):
     """Hard check that no withheld label reached the prompt.
 
     Returns (ok, detail). Any hit invalidates the run.
+
+    Every withheld STRING -- descriptions, answer keys, source_character, trait
+    tags, the parenthetical in ``name`` -- is scanned for across the WHOLE
+    prompt, D2's state block included. Only the numeric big_five heuristic is
+    scoped to outside that block, because a number next to a trait word is
+    exactly what D2 is supposed to contain: MindForm's own formed disposition.
+    The block is not simply trusted for being D2's -- it is checked by
+    provenance instead, which is the stricter test of the two.
     """
     hits = []
     low = prompt.lower()
     for s in forbidden:
         if s and len(s) > 3 and s.lower() in low:
             hits.append(s[:60])
-    # numeric big_five values, e.g. "0.95", only flagged next to a trait word
-    for trait, val in (char.get("big_five") or {}).items():
-        pat = re.compile(rf"{trait}\D{{0,12}}{val}", re.I)
-        if pat.search(prompt):
-            hits.append(f"big_five:{trait}={val}")
     for field in FORBIDDEN_CHARACTER_FIELDS:
         v = char.get(field)
         if isinstance(v, str) and len(v) > 20 and v[:40].lower() in low:
@@ -159,6 +249,26 @@ def leak_check(prompt, forbidden, char):
                   "_NEUTRAL_"):
         if token.lower() in low:
             hits.append(f"token:{token}")
+
+    block, rest = split_state_block(prompt)
+    hits.extend(check_state_provenance(block, state, live_traits))
+    if block:
+        hits.extend(check_state_not_seeded(state, char))
+
+    # Withheld big_five values, e.g. "conscientiousness: 0.5", anywhere OUTSIDE
+    # the engine's own state block. Compared as numbers rather than as a regex
+    # over the raw value: the old pattern interpolated the value unescaped, so
+    # HEART's "0.5" became `0.5` with "." as a wildcard and matched the first
+    # three characters of any 0.5x, and it ignored sign, so a MindForm-derived
+    # -0.53 was flagged as HEART's +0.5. Both are real numbers the engine can
+    # legitimately form.
+    for trait, val in (char.get("big_five") or {}).items():
+        try:
+            want = float(val)
+        except (TypeError, ValueError):
+            continue
+        if any(n == want for n in _numbers_after(rest, trait)):
+            hits.append(f"big_five:{trait}={val}")
     return (len(hits) == 0), "; ".join(sorted(set(hits))[:5])
 
 
@@ -217,6 +327,11 @@ def answer(prompt, temperature=None, max_tokens=None, retries=1):
     t0 = time.time()
     raw, usage = "", {"input_tokens": None, "output_tokens": None}
     choice, how = None, "none"
+    # Whether the model ever actually answered. A reply we could not parse is a
+    # measurement (the model had its chance and produced nothing usable); a
+    # transport or auth failure is not a measurement at all, and must never be
+    # scored as a wrong answer.
+    responded = False
 
     for attempt in range(retries + 1):
         try:
@@ -235,6 +350,7 @@ def answer(prompt, temperature=None, max_tokens=None, retries=1):
             if REASONING_EFFORT:
                 kwargs["reasoning_effort"] = REASONING_EFFORT
             resp = client.chat.completions.create(**kwargs)
+            responded = True
             raw = resp.choices[0].message.content or ""
             u = getattr(resp, "usage", None)
             if u:
@@ -252,6 +368,7 @@ def answer(prompt, temperature=None, max_tokens=None, retries=1):
     latency_ms = (time.time() - t0) * 1000.0
     return {
         "choice": choice,
+        "responded": responded,
         "parse_method": how,
         "raw_output": raw,
         "input_tokens": usage["input_tokens"],
