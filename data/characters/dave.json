@@ -1,0 +1,104 @@
+{
+    "identity": {
+        "name": "Dave",
+        "bio": "Dave, 21, loves hip-hop, born in Australia, residing in China, atheist, and loves skateboarding on weekends. His motto is: if you want to win a lottery, you should make enought money to buy a ticket"
+    },
+    "temperament": {
+        "mu": {
+            "O": 0.000713942591544,
+            "C": 0.0003606050316960001,
+            "E": 0.0017448853836960004,
+            "A": 0.0008942451073919999,
+            "N": 0.000143965156608
+        },
+        "tau": {
+            "O": 0.3,
+            "C": 0.3,
+            "E": 0.3,
+            "A": 0.3,
+            "N": 0.3
+        }
+    },
+    "traits": {
+        "O": 0.035697129577200004,
+        "C": 0.018030251584800004,
+        "E": 0.08724426918480002,
+        "A": 0.044712255369599996,
+        "N": 0.0071982578304
+    },
+    "character": {
+        "values": {
+            "SD": 0.018539469,
+            "ST": 0.05561840700000001,
+            "HE": 0.01495517166,
+            "AC": 0.0,
+            "PO": 0.041198820000000004,
+            "SE": 0.000519105132,
+            "CO": 0.06179823,
+            "TR": 0.041198820000000004,
+            "BE": 0.10403526026400002,
+            "UN": 0.027298338132000003
+        },
+        "moral": {
+            "CARE": 0.06335554539600001,
+            "FAIR": 0.0,
+            "LOYAL": 0.08239764000000001,
+            "AUTH": 0.0,
+            "SANC": 0.0,
+            "LIB": 0.012359646
+        },
+        "beliefs": [],
+        "beliefs_reviewed": 0,
+        "habits": []
+    },
+    "drives": {
+        "autonomy": {
+            "tension": 0.278118
+        },
+        "competence": {
+            "tension": 0.3
+        },
+        "relatedness": {
+            "tension": 0.12235399999999999
+        }
+    },
+    "experience_count": 1,
+    "self": {
+        "image": {
+            "O": 0.002855770366176,
+            "C": 0.0014424201267840004,
+            "E": 0.0069795415347840015,
+            "A": 0.0035769804295679997,
+            "N": 0.000575860626432
+        },
+        "esteem": 0.037439655839999995
+    },
+    "behavior": {
+        "approach": 0.0007559999999999998,
+        "inhibition": 0.0,
+        "set": {
+            "tendency": 0.06382821768,
+            "mode": "steady"
+        },
+        "last": {
+            "tendency": 0.06382821768,
+            "mode": "steady",
+            "style": {
+                "assertion": 0.0,
+                "warmth": 0.0,
+                "energy": 0.0,
+                "strain": 0.0
+            },
+            "turn": 1
+        },
+        "reception": null
+    },
+    "expression": {
+        "style": {
+            "assertion": 0.0,
+            "warmth": 0.0,
+            "energy": 0.0,
+            "strain": 0.0
+        }
+    }
+}

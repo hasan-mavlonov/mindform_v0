@@ -1,4 +1,6 @@
+# -------------------------
 # Python
+# -------------------------
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -6,23 +8,61 @@ __pycache__/
 build/
 dist/
 
+# -------------------------
 # Virtual environments
+# -------------------------
 .venv/
 venv/
 env/
 
+# -------------------------
 # IDE / editor
+# -------------------------
 .idea/
 .vscode/
 
+# -------------------------
 # OS
+# -------------------------
 .DS_Store
 
-# Model / data caches
+# -------------------------
+# Local caches / models
+# -------------------------
 .cache/
+.huggingface/
+*.onnx
+*.pt
+*.pth
 
-# Secrets / local environment (keep .env.example tracked)
+# -------------------------
+# Secrets / environment
+# -------------------------
 .env
+.env.*
+!.env.example
 
-# Runtime state: saved characters + their memory logs/sidecars (never source)
-data/
+# Generated HEART characters
+data/characters/heartbench-*
+
+# Personal/local character state
+data/characters/hasan.json
+
+# Runtime character memories / embeddings
+data/characters/*.memories.json
+data/characters/*.memories.embeddings.npy
+data/characters/*.beliefs.embeddings.npy
+
+# HEART benchmark runs/logs
+data/benchmark/heart/live-*/
+data/benchmark/heart/prepare-*/
+
+# HEART resumable checkpoints
+data/benchmark/heart/checkpoints/
+
+# Frozen/generated benchmark snapshots
+data/benchmark/heart/**/snapshots/
+
+# Generic temporary/runtime files
+*.log
+*.tmp
