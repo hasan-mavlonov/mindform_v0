@@ -147,8 +147,12 @@ def execute_question(log, arm, char, char_pub, scenario, question, name, run_dir
     state = mfadapter.state_summary(name) if arm == "mindform_d2" else None
     prompt = arms.build_prompt(char_pub, scenario, memories, options, state=state)
 
-    # 2. leak check BEFORE the call
-    ok, detail = arms.leak_check(prompt, forbidden, char)
+    # 2. leak check BEFORE the call. The state and the character's live traits
+    # are handed over so the checker can prove D2's numbers came from the engine
+    # rather than guess from their shape.
+    live_traits = mfadapter.trait_vector(mfadapter.load_character(name))
+    ok, detail = arms.leak_check(prompt, forbidden, char, state=state,
+                                 live_traits=live_traits)
     if not ok:
         log.event("leak_detected", arm=arm, question_id=question["question_id"],
                   detail=detail, prompt_sha256=arms.prompt_sha(prompt))
@@ -159,6 +163,16 @@ def execute_question(log, arm, char, char_pub, scenario, question, name, run_dir
 
     # 3. answer, then COMMIT before the truth is touched
     result = arms.answer(prompt)
+    if not result.get("responded"):
+        # The model never answered -- no key, no network, no quota. Recording
+        # that as an unparseable answer would score it wrong and quietly drag a
+        # whole run's accuracy toward zero while every number still looked real.
+        # A benchmark that cannot reach the model has no result to report.
+        log.event("answer_call_failed", arm=arm, question_id=question["question_id"],
+                  errors=result["errors"])
+        raise RunInvalid(
+            f"no answer from the model for {question['question_id']} [{arm}] -- "
+            f"the call never succeeded: {'; '.join(result['errors'])[:300]}")
 
     committed = {
         "arm": arm, "character_id": char["id"], "snapshot_id": frozen_id,
