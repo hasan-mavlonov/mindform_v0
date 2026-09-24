@@ -1186,6 +1186,10 @@ def main():
             print(f"  checkpoint for {c['character']} cannot be resumed: {f.get('detail')}")
     if not any(c["prepared"] for c in cat):
         print("  no prepared characters yet \u2014 Full Protocol Benchmark will form one first")
+    prepared_ids = [c["character"] for c in cat if c["prepared"]]
+    if prepared_ids:
+        print(f"  Personality Fidelity (does MindForm's formed state match HEART's hidden "
+              f"target?): python -m bench.heart.fidelity --character {prepared_ids[0]}")
     if args.open:
         webbrowser.open(url)
     _install_sigint(srv)
