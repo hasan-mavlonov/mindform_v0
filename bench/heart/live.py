@@ -503,6 +503,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);p
 .wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
 h1{font-size:22px;margin:0;letter-spacing:-.02em}
 h1 .dim{color:var(--mut);font-weight:400}
+.sub{color:var(--sec);font-size:13.5px;margin:6px 0 16px}
 .card{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:18px}
 .sunk{background:var(--sunk)}
 label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);
@@ -601,6 +602,8 @@ pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size
 </style></head><body>
 <div class="wrap">
   <h1>RUN HEART-BENCH <span class="dim">· MindForm</span></h1>
+  <p class="sub">Does it behave like that person? — MindForm's formed character
+    is given real, unseen scenarios and checked against a hidden, official answer.</p>
   <div id="r-controls"></div>
   <div id="r-banners"></div>
   <div id="r-formation"></div>
@@ -611,7 +614,8 @@ pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ARMCLS={naive_rag:"a1",mindform_d1:"a2",mindform_d2:"a3"};
 const ARMNM={naive_rag:"Naive RAG",mindform_d1:"MindForm D1",mindform_d2:"MindForm D2"};
-let SETUP=null, STATE=null, OPEN=new Set(), DEBUG=false;
+let SETUP=null, STATE=null, OPEN=new Set(), DEBUG=false, RESEARCH_OPEN=false;
+function toggleResearch(){ RESEARCH_OPEN=!RESEARCH_OPEN; render(); }
 let PICKED=new Set(["mindform_d2"]), MODE="quick", CHARSEL="CHAR_01::dev";
 function pick(a,on){ on?PICKED.add(a):PICKED.delete(a); }
 
@@ -747,7 +751,17 @@ function controls(){
       <option value="quick" ${curMode==="quick"?"selected":""}>Quick Test — ~${SETUP?.quick_n||20} questions</option>
       <option value="character" ${curMode==="character"?"selected":""}>Character Test — all questions</option>
       <option value="full" ${curMode==="full"?"selected":""}>Full Protocol Benchmark — ingest 1,000 memories first</option>
-    </select></div>
+    </select>
+    <p class="small muted" style="margin-top:6px">${({
+      quick: "Answers a handful of real, unseen scenarios against this character's "
+            + "existing snapshot — the fastest way to watch it work.",
+      character: "Answers every real, unseen scenario for this character, against "
+                + "its existing snapshot.",
+      full: "Forms this character from all 1,000 memories first — the expensive "
+           + "step, typically hours — then answers every scenario. An already "
+           + "formed (or partly formed) character resumes instead of restarting: "
+           + "this should not be re-run just to see results.",
+    })[curMode]}</p></div>
     <div><label>Character</label><select id="char" ${running?"disabled":""}
       onchange="reselect()">${opts}</select></div>
     <div><label>Systems</label><div class="armbox">${
@@ -779,7 +793,39 @@ function controls(){
       temp ${SETUP?.config?.temperature} · top-k ${SETUP?.config?.top_k} ·
       reasoning ${esc(SETUP?.config?.reasoning_effort||"default")} ·
       every arm uses the same model and settings
-    </div></div>`;
+    </div>
+    ${researchDetails()}
+    </div>`;
+}
+// A plain-language summary of what this test actually checks under the hood.
+// Custom click handler + JS-tracked RESEARCH_OPEN (folded into r-controls'
+// paint signature above), not a native <details> -- this block lives inside
+// the same region that legitimately repaints on ordinary interaction (picking
+// an arm, switching mode or character), and a native <details>'s "open"
+// attribute would be wiped by that repaint even though nothing about ITS
+// content changed. Tracking the open state in JS instead of the DOM survives
+// any repaint, by construction, rather than by coincidence.
+function researchDetails(){
+  const body = RESEARCH_OPEN ? `<div class="small muted" style="margin-top:8px;line-height:1.6">
+      HEART gives the formed character unseen behavioral situations and checks
+      whether it makes the same choice as the person it was formed to be —
+      compared against a hidden, official ground-truth answer it never sees.
+      <br><br>
+      Three ways of answering are compared side by side:
+      <br>&nbsp;&nbsp;<b>Naive RAG</b> — plain memory lookup, no persistent state
+      <br>&nbsp;&nbsp;<b>MindForm D1</b> — MindForm's own retrieval, same prompt shape as Naive RAG
+      <br>&nbsp;&nbsp;<b>MindForm D2</b> — D1 plus the character's persistent formed-personality state
+      <br><br>
+      Every prompt is scanned before it's sent to make sure the hidden answer
+      (and every other withheld label) never leaks in, the frozen snapshot is
+      re-verified byte-for-byte after every question, and the ground truth is
+      only revealed after an answer is already committed — so nothing here can
+      see the answer key in advance.
+    </div>` : "";
+  return `<div style="margin-top:10px">
+    <div class="small" style="cursor:pointer;color:var(--a1)" onclick="toggleResearch()">
+      Research details ${RESEARCH_OPEN?"▴":"▾"}</div>
+    ${body}</div>`;
 }
 
 function tierBanner(){
@@ -1064,6 +1110,7 @@ function render(){
   // While a run is in flight nothing in the controls is editable, so their
   // content is pinned: no re-render, no destroyed Stop button.
   paint("r-controls", JSON.stringify([running, MODE, CHARSEL, [...PICKED].sort(),
+    RESEARCH_OPEN,
     running?null:(SETUP?.characters||[]).map(c=>[c.character,c.dev_prepared,
       c.full_prepared,c.dev_memories,c.total_memories,c.questions,
       c.formation?.state,c.formation?.done,c.formation?.resumable])]), controls);

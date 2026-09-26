@@ -166,8 +166,28 @@ details summary{cursor:pointer;font-size:13px;color:var(--sec)}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let SETUP=null, STATE=null;
 async function setup(){ SETUP=await (await fetch("/api/setup")).json(); }
+// BUG (fixed here): render() replaces #root's whole innerHTML, which destroys
+// every child node -- including a native <details> a viewer just opened. With
+// poll() calling render() unconditionally every 600ms, a <details> could never
+// stay open past one polling tick: nothing about the *data* had changed, but
+// the DOM node holding "open" was torn down and rebuilt from a template that
+// never encodes that transient DOM state, so it always came back closed. That
+// reads as "the dropdown opens and immediately closes."
+// Fix: skip the repaint entirely when the state is byte-for-byte the same as
+// last time. This is not a timeout or a special-case for <details> -- once a
+// run finishes, /api/state is genuinely static (elapsed_s freezes to
+// finished_at, not time.time()), so there is nothing left to legitimately
+// redraw, and any DOM state the viewer created (an open <details>, a scroll
+// position) is simply left alone. Real changes -- a run progressing, a new
+// run starting -- still repaint immediately, once, correctly.
+let LAST_STATE_JSON=null;
 async function poll(){
-  try{ STATE=await (await fetch("/api/state",{cache:"no-store"})).json(); render(); }catch(e){}
+  try{
+    const j=await (await fetch("/api/state",{cache:"no-store"})).json();
+    const s=JSON.stringify(j);
+    if(s===LAST_STATE_JSON) return;
+    LAST_STATE_JSON=s; STATE=j; render();
+  }catch(e){}
 }
 async function start(){
   const character=document.getElementById("char").value;
@@ -194,16 +214,27 @@ function controls(){
         ${running?"Running…":"Run "+esc(SETUP?.instrument?.name||"Personality Test")}</button>
     </div>
     <p class="small" style="margin-top:8px">${esc(SETUP?.instrument?.full_name||"")} —
-      ${SETUP?.instrument?.domain_order?.length||5} domains, ${SETUP? "" : ""}
-      self-report from the frozen character's own formed state. No HEART hidden
-      labels are ever shown to it.</p>
-    <p class="notice">${esc(SETUP?.instrument?.license_notice||"")}</p>
+      MindForm's already-formed character answers a real personality questionnaire
+      about itself. Nothing is retrained or re-formed, and HEART's hidden target
+      personality is never shown to it.</p>
+    ${licenseNotice(SETUP?.instrument?.license_notice)}
   </div>`;
 }
 function onCharTier(){
   const v=document.getElementById("chartier").value.split("::");
   document.getElementById("char").value=v[0];
   document.getElementById("tier").value=v[1];
+}
+// Licensing stays visible everywhere this test appears, but the long legal
+// paragraph is one click away rather than always taking up space -- the short
+// line is what an investor or partner actually needs to see by default.
+function licenseNotice(full){
+  if(!full) return "";
+  return `<p class="notice">Internal research use only — not yet licensed for
+    commercial use.
+    <details style="display:inline"><summary style="display:inline;cursor:pointer;
+      color:var(--accent)">Legal details ▾</summary>
+      <div style="margin-top:6px">${esc(full)}</div></details></p>`;
 }
 function progress(){
   if(!STATE || STATE.status==="idle") return "";
@@ -258,13 +289,13 @@ function results(){
     <h1 style="font-size:16px">${esc(r.instrument.name)} PERSONALITY TEST</h1>
     <p class="sub">${esc(r.character)} (${esc(r.occupation)}) — ${esc(r.tier.toUpperCase())} tier</p>
     ${bars}
-    <details style="margin-top:8px"><summary>View facets ↓</summary>${facetHtml}
+    <details style="margin-top:8px"><summary>View 15 facets ↓</summary>${facetHtml}
       <p class="notice">${esc(r.instrument.reliability_note)}</p></details>
-    <p class="notice">${esc(r.instrument.license_notice)}</p>
+    ${licenseNotice(r.instrument.license_notice)}
   </div>
   <details class="card">
-    <summary><b>Research / details</b> — internal MindForm, self-report, and HEART's
-      hidden target are three separate measurements.</summary>
+    <summary><b>Research details ▾</b> — internal MindForm, self-report, and HEART's
+      hidden target are three separate measurements, never averaged together.</summary>
     <p class="small" style="margin-top:8px">${esc(c.protocol_note)}</p>
     <div class="row small" style="justify-content:space-between;padding:4px 0">
       <span style="flex:1.6">trait</span><span style="width:70px;text-align:right">internal</span>
@@ -280,7 +311,10 @@ function results(){
   </details>`;
 }
 function render(){
-  let h=`<h1>Personality Test</h1><p class="sub">What personality did MindForm form?</p>`;
+  let h=`<h1>Personality Test</h1>
+    <p class="sub">What personality did MindForm form? — MindForm takes the
+    personality it formed and answers a standardized questionnaire about
+    itself, in character.</p>`;
   h+=controls()+progress()+results();
   document.getElementById("root").innerHTML=h;
   const sel=document.getElementById("chartier");
